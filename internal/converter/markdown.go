@@ -8,17 +8,17 @@ import (
 
 var (
 	// Compile regex patterns once at package initialization
-	headerPattern1    = regexp.MustCompile(`(?m)^# (.+)$`)
-	headerPattern2    = regexp.MustCompile(`(?m)^## (.+)$`)
-	headerPattern3    = regexp.MustCompile(`(?m)^### (.+)$`)
-	headerPattern4    = regexp.MustCompile(`(?m)^#### (.+)$`)
-	headerPattern5    = regexp.MustCompile(`(?m)^##### (.+)$`)
-	headerPattern6    = regexp.MustCompile(`(?m)^###### (.+)$`)
-	boldPattern       = regexp.MustCompile(`\*\*([^*\n]+)\*\*`)
-	italicPattern     = regexp.MustCompile(`\*([^*\n]+)\*`)
-	codePattern       = regexp.MustCompile("`([^`]+)`")
-	codeBlockPattern  = regexp.MustCompile("```([a-z]*)\n([\\s\\S]*?)```")
-	linkPattern       = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	headerPattern1     = regexp.MustCompile(`(?m)^# (.+)$`)
+	headerPattern2     = regexp.MustCompile(`(?m)^## (.+)$`)
+	headerPattern3     = regexp.MustCompile(`(?m)^### (.+)$`)
+	headerPattern4     = regexp.MustCompile(`(?m)^#### (.+)$`)
+	headerPattern5     = regexp.MustCompile(`(?m)^##### (.+)$`)
+	headerPattern6     = regexp.MustCompile(`(?m)^###### (.+)$`)
+	boldPattern        = regexp.MustCompile(`\*\*([^*\n]+)\*\*`)
+	italicPattern      = regexp.MustCompile(`\*([^*\n]+)\*`)
+	codePattern        = regexp.MustCompile("`([^`]+)`")
+	codeBlockPattern   = regexp.MustCompile("```([a-z]*)\n([\\s\\S]*?)```")
+	linkPattern        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 	orderedListPattern = regexp.MustCompile(`^\d+\.\s+`)
 )
 

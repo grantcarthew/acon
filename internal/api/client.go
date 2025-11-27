@@ -28,8 +28,8 @@ type Page struct {
 }
 
 type PageBodyGet struct {
-	Storage         *BodyContent `json:"storage,omitempty"`
-	AtlasDocFormat  *BodyContent `json:"atlas_doc_format,omitempty"`
+	Storage        *BodyContent `json:"storage,omitempty"`
+	AtlasDocFormat *BodyContent `json:"atlas_doc_format,omitempty"`
 }
 
 type BodyContent struct {

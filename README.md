@@ -32,8 +32,17 @@ acon page update 123456 -f docs.md
 
 **Homebrew** (macOS/Linux):
 ```bash
+# Add the tap first
+brew tap grantcarthew/tap
+
+# Then install
+brew install acon
+
+# Or do it in one command
 brew install grantcarthew/tap/acon
 ```
+
+*Check out [my other Homebrew packages](https://github.com/grantcarthew/homebrew-tap) in the tap!*
 
 **Go install**:
 ```bash
@@ -50,20 +59,16 @@ sudo mv acon /usr/local/bin/
 
 ### Configuration
 
-Set required environment variables:
+Set the following environment variables:
 
 ```bash
 export CONFLUENCE_BASE_URL="https://your-instance.atlassian.net"
 export CONFLUENCE_EMAIL="your-email@example.com"
 export CONFLUENCE_API_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="YOUR_SPACE"  # (Optional)
 ```
 
 Get an API token at: https://id.atlassian.com/manage-profile/security/api-tokens
-
-**Optional**: Set a default space to avoid using `-s` flag:
-```bash
-export CONFLUENCE_SPACE_KEY="YOUR_SPACE"
-```
 
 **Note**: The same API token works for Confluence and Jira. You can use `CONFLUENCE_API_TOKEN`, `ATLASSIAN_API_TOKEN`, or `JIRA_API_TOKEN`.
 

@@ -1,7 +1,7 @@
 package converter
 
 import (
-	"html"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -20,34 +20,89 @@ var (
 	codeBlockPattern   = regexp.MustCompile("```([a-z]*)\n([\\s\\S]*?)```")
 	linkPattern        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 	orderedListPattern = regexp.MustCompile(`^\d+\.\s+`)
+	tablePattern       = regexp.MustCompile(`(?m)^\|(.+)\|\s*\n\|[\s:|-]+\|\s*\n((?:\|.+\|\s*\n?)*)`)
 )
 
 func MarkdownToStorage(markdown string) string {
+	// Use the goldmark-based converter for robust markdown parsing
+	return MarkdownToStorageGoldmark(markdown)
+}
+
+// MarkdownToStorageRegex is the old regex-based converter (kept for reference)
+func MarkdownToStorageRegex(markdown string) string {
 	content := markdown
 
-	// Escape all HTML entities in the input to prevent XSS
-	// This converts user's < > & to &lt; &gt; &amp;
-	// Our markdown conversions will then generate intentional HTML tags
-	content = html.EscapeString(content)
+	// Step 1: Extract code blocks and inline code first to protect from HTML escaping
+	codePlaceholders := make(map[string]string)
+	content = extractCodeBlocks(content, codePlaceholders)
+	content = extractInlineCode(content, codePlaceholders)
 
-	// Process code to protect content from other conversions
-	content = convertCodeBlocks(content)
-	content = convertCode(content)
+	// Step 2: Escape HTML entities in remaining content to prevent XSS
+	content = escapeHTML(content)
 
-	// Then formatting
+	// Step 3: Convert markdown to HTML
+	content = convertTables(content)
 	content = convertHeaders(content)
 	content = convertBold(content)
 	content = convertItalic(content)
 	content = convertLinks(content)
-
-	// Block-level elements (blockquotes use escaped &gt; now)
 	content = convertUnorderedLists(content)
 	content = convertOrderedLists(content)
 	content = convertBlockquotes(content)
 
-	// Line breaks last
+	// Step 4: Restore code blocks and inline code as Confluence format
+	content = restorePlaceholders(content, codePlaceholders)
+
+	// Step 5: Handle line breaks
 	content = convertLineBreaks(content)
 
+	return content
+}
+
+// extractCodeBlocks extracts code blocks and replaces them with placeholders
+func extractCodeBlocks(content string, placeholders map[string]string) string {
+	counter := 0
+	return codeBlockPattern.ReplaceAllStringFunc(content, func(match string) string {
+		parts := codeBlockPattern.FindStringSubmatch(match)
+		lang := parts[1]
+		code := parts[2]
+		placeholder := fmt.Sprintf("___CODEBLOCK_%d___", counter)
+		if lang == "" {
+			lang = "none"
+		}
+		// Store as Confluence code macro with newlines for proper formatting
+		placeholders[placeholder] = `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">` + lang + `</ac:parameter><ac:plain-text-body><![CDATA[` + code + `]]></ac:plain-text-body></ac:structured-macro>` + "\n"
+		counter++
+		return "\n" + placeholder + "\n"
+	})
+}
+
+// extractInlineCode extracts inline code and replaces them with placeholders
+func extractInlineCode(content string, placeholders map[string]string) string {
+	counter := 0
+	return codePattern.ReplaceAllStringFunc(content, func(match string) string {
+		parts := codePattern.FindStringSubmatch(match)
+		code := parts[1]
+		placeholder := fmt.Sprintf("___CODE_%d___", counter)
+		placeholders[placeholder] = "<code>" + code + "</code>"
+		counter++
+		return placeholder
+	})
+}
+
+// escapeHTML escapes HTML entities in the content
+func escapeHTML(content string) string {
+	content = strings.ReplaceAll(content, "&", "&amp;")
+	content = strings.ReplaceAll(content, "<", "&lt;")
+	content = strings.ReplaceAll(content, ">", "&gt;")
+	return content
+}
+
+// restorePlaceholders restores the code blocks and inline code
+func restorePlaceholders(content string, placeholders map[string]string) string {
+	for placeholder, replacement := range placeholders {
+		content = strings.ReplaceAll(content, placeholder, replacement)
+	}
 	return content
 }
 
@@ -93,22 +148,45 @@ func convertItalic(content string) string {
 	})
 }
 
-func convertCode(content string) string {
-	return codePattern.ReplaceAllStringFunc(content, func(match string) string {
-		parts := codePattern.FindStringSubmatch(match)
-		return "<code>" + parts[1] + "</code>"
-	})
-}
-
-func convertCodeBlocks(content string) string {
-	return codeBlockPattern.ReplaceAllStringFunc(content, func(match string) string {
-		parts := codeBlockPattern.FindStringSubmatch(match)
-		lang := parts[1]
-		code := parts[2]
-		if lang == "" {
-			lang = "none"
+func convertTables(content string) string {
+	return tablePattern.ReplaceAllStringFunc(content, func(match string) string {
+		lines := strings.Split(strings.TrimSpace(match), "\n")
+		if len(lines) < 3 {
+			return match
 		}
-		return `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">` + lang + `</ac:parameter><ac:plain-text-body><![CDATA[` + code + `]]></ac:plain-text-body></ac:structured-macro>`
+
+		var result strings.Builder
+		result.WriteString("<table><tbody>\n")
+
+		// Process header row
+		headerCells := strings.Split(strings.Trim(lines[0], "|"), "|")
+		result.WriteString("<tr>")
+		for _, cell := range headerCells {
+			result.WriteString("<th>")
+			result.WriteString(strings.TrimSpace(cell))
+			result.WriteString("</th>")
+		}
+		result.WriteString("</tr>\n")
+
+		// Skip separator line (lines[1])
+		// Process data rows
+		for i := 2; i < len(lines); i++ {
+			line := strings.TrimSpace(lines[i])
+			if line == "" {
+				continue
+			}
+			dataCells := strings.Split(strings.Trim(line, "|"), "|")
+			result.WriteString("<tr>")
+			for _, cell := range dataCells {
+				result.WriteString("<td>")
+				result.WriteString(strings.TrimSpace(cell))
+				result.WriteString("</td>")
+			}
+			result.WriteString("</tr>\n")
+		}
+
+		result.WriteString("</tbody></table>\n")
+		return result.String()
 	})
 }
 
@@ -237,11 +315,15 @@ func convertLineBreaks(content string) string {
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "<") {
+
+		// Check if line is HTML tag or placeholder
+		isBlockElement := strings.HasPrefix(trimmed, "<") || strings.HasPrefix(trimmed, "___")
+
+		if isBlockElement {
 			inBlock = true
 		}
 
-		if !inBlock && trimmed != "" && !strings.HasPrefix(trimmed, "<") {
+		if !inBlock && trimmed != "" && !isBlockElement {
 			result.WriteString("<p>")
 			result.WriteString(line)
 			result.WriteString("</p>")
@@ -253,7 +335,7 @@ func convertLineBreaks(content string) string {
 			result.WriteString("\n")
 		}
 
-		if strings.HasSuffix(trimmed, ">") && inBlock {
+		if (strings.HasSuffix(trimmed, ">") || strings.HasSuffix(trimmed, "___")) && inBlock {
 			inBlock = false
 		}
 	}

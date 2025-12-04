@@ -82,6 +82,11 @@ func TestStorageToMarkdown(t *testing.T) {
 			contains: []string{"Just a paragraph."},
 		},
 		{
+			name:     "HTML entities decoded",
+			input:    "<p>Angle brackets &lt; and &gt; with ampersand &amp; decoded</p>",
+			contains: []string{"Angle brackets < and > with ampersand & decoded"},
+		},
+		{
 			name:     "empty input",
 			input:    "",
 			contains: []string{},

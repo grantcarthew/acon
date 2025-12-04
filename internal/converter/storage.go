@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"html"
 	"regexp"
 	"strings"
 
@@ -58,5 +59,10 @@ func StorageToMarkdown(storage string) (string, error) {
 		return `<pre><code>` + code + `</code></pre>`
 	})
 
-	return storageConverter.ConvertString(processed)
+	markdown, err := storageConverter.ConvertString(processed)
+	if err != nil {
+		return "", err
+	}
+	// Decode HTML entities (e.g., &lt; → <, &gt; → >, &amp; → &)
+	return html.UnescapeString(markdown), nil
 }

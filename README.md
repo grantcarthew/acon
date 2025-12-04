@@ -224,16 +224,25 @@ acon page delete 123456789
 
 #### `acon page list`
 
-List pages in a Confluence space.
+List pages in a Confluence space or children of a specific page.
 
 ```bash
 acon page list [flags]
 
 Flags:
-  -j, --json          Output JSON instead of human-readable format
-  -l, --limit int     Maximum number of pages to return (default: 25)
-  -s, --space string  Space key (uses CONFLUENCE_SPACE_KEY if not set)
+      --desc            Sort in descending order
+  -j, --json            Output JSON instead of human-readable format
+  -l, --limit int       Maximum number of pages to return (default: 25)
+  -p, --parent string   Parent page ID (list children of this page)
+      --sort string     Sort order (see below)
+  -s, --space string    Space key (uses CONFLUENCE_SPACE_KEY if not set)
 ```
+
+**Sort options**:
+- With `--parent`: `web` (default), `title`, `created`, `modified`, `id`
+- Without `--parent`: `title`, `created`, `modified`, `id`
+
+The `web` sort matches the manual page order in Confluence's web interface.
 
 **Examples**:
 
@@ -243,6 +252,18 @@ acon page list
 
 # List pages in specific space
 acon page list -s MYSPACE
+
+# List child pages of a parent
+acon page list --parent 123456789
+
+# Sort by creation date (newest first)
+acon page list --parent 123456789 --sort created --desc
+
+# Sort by title
+acon page list -s MYSPACE --sort title
+
+# Reverse default order
+acon page list --parent 123456789 --desc
 
 # Limit results
 acon page list -l 10

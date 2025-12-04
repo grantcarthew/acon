@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/grantcarthew/acon/internal/api"
 	"github.com/grantcarthew/acon/internal/config"
@@ -23,9 +25,68 @@ var (
 	pageSpace  string
 	pageParent string
 	pageLimit  int
+	pageSort   string
+	pageDesc   bool
 	outputJSON bool
 	updateMsg  string
 )
+
+// mapChildSortValue converts friendly sort names to API values for child pages
+// Returns empty string for "title" as it's handled client-side
+func mapChildSortValue(sort string, desc bool) (apiSort string, valid bool) {
+	// Default to web (child-position) if no sort specified
+	if sort == "" {
+		sort = "web"
+	}
+
+	// Title is valid but sorted client-side, not by API
+	if sort == "title" {
+		return "", true
+	}
+
+	apiValue := map[string]string{
+		"web":      "child-position",
+		"created":  "created-date",
+		"modified": "modified-date",
+		"id":       "id",
+	}[sort]
+
+	if apiValue == "" {
+		return "", false
+	}
+
+	if desc {
+		return "-" + apiValue, true
+	}
+	return apiValue, true
+}
+
+// mapSpaceSortValue converts friendly sort names to API values for space page listing
+func mapSpaceSortValue(sort string, desc bool) string {
+	// No default - API handles it
+	if sort == "" {
+		if desc {
+			return "-id" // Default to id desc if only --desc provided
+		}
+		return ""
+	}
+
+	apiValue := map[string]string{
+		"title":    "title",
+		"created":  "created-date",
+		"modified": "modified-date",
+		"id":       "id",
+	}[sort]
+
+	if apiValue == "" {
+		return ""
+	}
+
+	if desc {
+		return "-" + apiValue
+	}
+	return apiValue
+}
 
 var pageCmd = &cobra.Command{
 	Use:   "page",
@@ -249,27 +310,69 @@ var pageListCmd = &cobra.Command{
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
-		spaceKey := pageSpace
-		if spaceKey == "" {
-			spaceKey = cfg.SpaceKey
-		}
+		var pages []api.Page
 
-		space, err := client.GetSpace(spaceKey)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting space: %v\n", err)
-			os.Exit(1)
-		}
+		if pageParent != "" {
+			// List children of a specific parent page
+			sortValue, valid := mapChildSortValue(pageSort, pageDesc)
+			if !valid {
+				fmt.Fprintf(os.Stderr, "Error: invalid sort value '%s' (valid: web, title, created, modified, id)\n", pageSort)
+				os.Exit(1)
+			}
+			var err error
+			pages, err = client.GetChildPages(pageParent, pageLimit, sortValue)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error listing child pages: %v\n", err)
+				os.Exit(1)
+			}
 
-		pages, err := client.ListPages(space.ID, pageLimit)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing pages: %v\n", err)
-			os.Exit(1)
+			// Client-side title sort (not supported by API)
+			if pageSort == "title" {
+				sort.Slice(pages, func(i, j int) bool {
+					if pageDesc {
+						return strings.ToLower(pages[i].Title) > strings.ToLower(pages[j].Title)
+					}
+					return strings.ToLower(pages[i].Title) < strings.ToLower(pages[j].Title)
+				})
+			}
+		} else {
+			// List pages in space
+			spaceKey := pageSpace
+			if spaceKey == "" {
+				spaceKey = cfg.SpaceKey
+			}
+
+			sortValue := mapSpaceSortValue(pageSort, pageDesc)
+			if sortValue == "" && pageSort != "" {
+				fmt.Fprintf(os.Stderr, "Error: invalid sort value '%s' (valid: title, created, modified, id)\n", pageSort)
+				os.Exit(1)
+			}
+
+			space, err := client.GetSpace(spaceKey)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting space: %v\n", err)
+				os.Exit(1)
+			}
+
+			pages, err = client.ListPages(space.ID, pageLimit, sortValue)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error listing pages: %v\n", err)
+				os.Exit(1)
+			}
 		}
 
 		if outputJSON {
 			printJSON(pages)
 		} else {
-			fmt.Printf("Pages in space %s:\n\n", spaceKey)
+			if pageParent != "" {
+				fmt.Printf("Child pages of %s:\n\n", pageParent)
+			} else {
+				spaceKey := pageSpace
+				if spaceKey == "" {
+					spaceKey = cfg.SpaceKey
+				}
+				fmt.Printf("Pages in space %s:\n\n", spaceKey)
+			}
 			for _, page := range pages {
 				fmt.Printf("ID: %s\n", page.ID)
 				fmt.Printf("Title: %s\n", page.Title)
@@ -343,7 +446,10 @@ func init() {
 	pageUpdateCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
 	pageListCmd.Flags().StringVarP(&pageSpace, "space", "s", "", "Space key (uses config default if not specified)")
+	pageListCmd.Flags().StringVarP(&pageParent, "parent", "p", "", "Parent page ID (list children of this page)")
 	pageListCmd.Flags().IntVarP(&pageLimit, "limit", "l", 25, "Maximum number of pages to list")
+	pageListCmd.Flags().StringVar(&pageSort, "sort", "", "Sort order: web, title, created, modified, id")
+	pageListCmd.Flags().BoolVar(&pageDesc, "desc", false, "Sort in descending order")
 	pageListCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
 	pageCmd.AddCommand(pageCreateCmd)

@@ -190,12 +190,15 @@ func (c *Client) DeletePage(pageID string) error {
 	return nil
 }
 
-func (c *Client) ListPages(spaceID string, limit int) ([]Page, error) {
+func (c *Client) ListPages(spaceID string, limit int, sort string) ([]Page, error) {
 	if strings.TrimSpace(spaceID) == "" {
 		return nil, fmt.Errorf("spaceID cannot be empty")
 	}
 
 	path := fmt.Sprintf("/wiki/api/v2/pages?space-id=%s&limit=%d&body-format=storage", spaceID, limit)
+	if strings.TrimSpace(sort) != "" {
+		path += fmt.Sprintf("&sort=%s", sort)
+	}
 	respBody, err := c.doRequest("GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("list pages request failed: %w", err)
@@ -204,6 +207,28 @@ func (c *Client) ListPages(spaceID string, limit int) ([]Page, error) {
 	var result PageListResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse list pages response: %w", err)
+	}
+
+	return result.Results, nil
+}
+
+func (c *Client) GetChildPages(parentID string, limit int, sort string) ([]Page, error) {
+	if strings.TrimSpace(parentID) == "" {
+		return nil, fmt.Errorf("parentID cannot be empty")
+	}
+
+	path := fmt.Sprintf("/wiki/api/v2/pages/%s/children?limit=%d", parentID, limit)
+	if strings.TrimSpace(sort) != "" {
+		path += fmt.Sprintf("&sort=%s", sort)
+	}
+	respBody, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get child pages request failed: %w", err)
+	}
+
+	var result PageListResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse child pages response: %w", err)
 	}
 
 	return result.Results, nil

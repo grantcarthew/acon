@@ -403,7 +403,6 @@ var pageMoveCmd = &cobra.Command{
 
 func readAndValidateContent(pageFile string) ([]byte, error) {
 	var content []byte
-	var err error
 
 	if pageFile != "" {
 		// Check file size before reading
@@ -420,6 +419,15 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 			return nil, fmt.Errorf("reading file: %w", err)
 		}
 	} else {
+		// Check if stdin is a terminal (no piped input)
+		stat, err := os.Stdin.Stat()
+		if err != nil {
+			return nil, fmt.Errorf("checking stdin: %w", err)
+		}
+		if stat.Mode()&os.ModeCharDevice != 0 {
+			return nil, fmt.Errorf("content required via --file or pipe")
+		}
+
 		// Limit stdin reading
 		limitedReader := io.LimitReader(os.Stdin, maxContentSize+1)
 		content, err = io.ReadAll(limitedReader)

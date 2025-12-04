@@ -142,3 +142,181 @@ func TestStorageToMarkdown_ComplexDocument(t *testing.T) {
 		}
 	}
 }
+
+func TestStorageToMarkdown_CodeMacros(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		excludes []string
+	}{
+		{
+			name:     "basic code block with language",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[fmt.Println("hello")]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", `fmt.Println("hello")`, "```"},
+		},
+		{
+			name:     "code block without language",
+			input:    `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[plain code]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```", "plain code"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "code block with schema-version",
+			input:    `<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:plain-text-body><![CDATA[test]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```", "test"},
+		},
+		{
+			name:     "code block with macro-id",
+			input:    `<ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="abc-123"><ac:parameter ac:name="language">python</ac:parameter><ac:plain-text-body><![CDATA[print("hi")]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```python", `print("hi")`},
+		},
+		{
+			name:     "attributes in different order",
+			input:    `<ac:structured-macro ac:schema-version="1" ac:macro-id="xyz" ac:name="code"><ac:parameter ac:name="language">rust</ac:parameter><ac:plain-text-body><![CDATA[fn main() {}]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```rust", "fn main() {}"},
+		},
+		{
+			name:     "empty code block",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "code with HTML special characters",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">html</ac:parameter><ac:plain-text-body><![CDATA[<div>a < b && c > d</div>]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```html", "<div>", "a < b", "c > d", "</div>"},
+		},
+		{
+			name:     "code with unicode",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[fmt.Println("こんにちは 🚀")]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", "こんにちは", "🚀"},
+		},
+		{
+			name:     "multiple parameters with language",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="title">Example</ac:parameter><ac:parameter ac:name="language">python</ac:parameter><ac:parameter ac:name="collapse">true</ac:parameter><ac:plain-text-body><![CDATA[print("hello")]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```python", `print("hello")`},
+			excludes: []string{"CDATA", "title", "collapse"},
+		},
+		{
+			name:     "language parameter after other parameters",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="title">Test</ac:parameter><ac:parameter ac:name="linenumbers">true</ac:parameter><ac:parameter ac:name="language">java</ac:parameter><ac:plain-text-body><![CDATA[System.out.println();]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```java", "System.out.println();"},
+		},
+		{
+			name: "newlines between elements",
+			input: `<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">go</ac:parameter>
+  <ac:plain-text-body><![CDATA[func main() {}]]></ac:plain-text-body>
+</ac:structured-macro>`,
+			contains: []string{"```go", "func main() {}"},
+		},
+		{
+			name:     "multiline code content",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[func main() {` + "\n" + `    fmt.Println("line 1")` + "\n" + `    fmt.Println("line 2")` + "\n" + `}]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", "func main() {", `fmt.Println("line 1")`, `fmt.Println("line 2")`, "}"},
+		},
+		{
+			name: "multiple code blocks",
+			input: `<p>First:</p>
+<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[fmt.Println("one")]]></ac:plain-text-body></ac:structured-macro>
+<p>Second:</p>
+<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">python</ac:parameter><ac:plain-text-body><![CDATA[print("two")]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", `fmt.Println("one")`, "```python", `print("two")`, "First:", "Second:"},
+		},
+		{
+			name: "code block mixed with other macros",
+			input: `<ac:structured-macro ac:name="info"><ac:rich-text-body><p>Info</p></ac:rich-text-body></ac:structured-macro>
+<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[code here]]></ac:plain-text-body></ac:structured-macro>
+<ac:structured-macro ac:name="warning"><ac:rich-text-body><p>Warning</p></ac:rich-text-body></ac:structured-macro>`,
+			contains: []string{"```go", "code here", "Info", "Warning"},
+		},
+		{
+			name:     "code with array brackets",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">js</ac:parameter><ac:plain-text-body><![CDATA[if (arr[i] > 5) { console.log(arr[j]); }]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```js", "arr[i]", "arr[j]"},
+		},
+		{
+			name:     "whitespace only code",
+			input:    `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[` + "\n   " + `]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "code with triple backticks",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">md</ac:parameter><ac:plain-text-body><![CDATA[` + "```python\nprint('nested')\n```" + `]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"print('nested')"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "code with backslashes",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[path := "C:\\Users\\test"` + "\n" + `regex := "\\d+\\.\\d+"]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", `C:\\Users\\test`, `\\d+\\.\\d+`},
+		},
+		{
+			name:     "empty language value",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language"></ac:parameter><ac:plain-text-body><![CDATA[code here]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```", "code here"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "language with whitespace",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">  go  </ac:parameter><ac:plain-text-body><![CDATA[test]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"go", "test"},
+			excludes: []string{"CDATA"},
+		},
+		{
+			name:     "code with ampersands",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[if a && b || c & d {}]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", "a && b", "c & d"},
+		},
+		{
+			name:     "code with quotes",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[s := "hello \"world\"" + 'c']]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```go", `"hello \"world\""`, "'c'"},
+		},
+		{
+			name:     "very long single line",
+			input:    `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">txt</ac:parameter><ac:plain-text-body><![CDATA[` + strings.Repeat("abcdefghij", 100) + `]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```txt", strings.Repeat("abcdefghij", 100)},
+		},
+		{
+			name: "real confluence format with all attributes",
+			input: `<ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="550e8400-e29b-41d4-a716-446655440000">
+  <ac:parameter ac:name="language">go</ac:parameter>
+  <ac:parameter ac:name="title">Example Code</ac:parameter>
+  <ac:plain-text-body><![CDATA[package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, World!")
+}
+]]></ac:plain-text-body>
+</ac:structured-macro>`,
+			contains: []string{"```go", "package main", `import "fmt"`, "func main()", `fmt.Println("Hello, World!")`},
+			excludes: []string{"CDATA", "Example Code", "macro-id"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := StorageToMarkdown(tt.input)
+			if err != nil {
+				t.Fatalf("StorageToMarkdown() error = %v", err)
+			}
+
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf("output missing expected content %q\nGot:\n%s", want, result)
+				}
+			}
+
+			for _, exclude := range tt.excludes {
+				if strings.Contains(result, exclude) {
+					t.Errorf("output contains unexpected content %q\nGot:\n%s", exclude, result)
+				}
+			}
+		})
+	}
+}

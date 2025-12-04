@@ -11,7 +11,12 @@ import (
 
 var debugCmd = &cobra.Command{
 	Use:   "debug",
-	Short: "Debug markdown to storage conversion",
+	Short: "Debug converter functions",
+}
+
+var debugMdCmd = &cobra.Command{
+	Use:   "md",
+	Short: "Convert markdown to storage format",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		markdown, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -24,6 +29,26 @@ var debugCmd = &cobra.Command{
 	},
 }
 
+var debugStorageCmd = &cobra.Command{
+	Use:   "storage",
+	Short: "Convert storage format to markdown",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		storage, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading stdin: %w", err)
+		}
+
+		markdown, err := converter.StorageToMarkdown(string(storage))
+		if err != nil {
+			return fmt.Errorf("converting storage to markdown: %w", err)
+		}
+		fmt.Println(markdown)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(debugCmd)
+	debugCmd.AddCommand(debugMdCmd)
+	debugCmd.AddCommand(debugStorageCmd)
 }

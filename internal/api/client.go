@@ -120,12 +120,13 @@ type PageCreateRequest struct {
 }
 
 type PageUpdateRequest struct {
-	ID      string         `json:"id"`
-	SpaceID string         `json:"spaceId"`
-	Status  string         `json:"status"`
-	Title   string         `json:"title"`
-	Body    *PageBodyWrite `json:"body"`
-	Version *Version       `json:"version"`
+	ID       string         `json:"id"`
+	SpaceID  string         `json:"spaceId"`
+	Status   string         `json:"status"`
+	Title    string         `json:"title"`
+	ParentID string         `json:"parentId,omitempty"`
+	Body     *PageBodyWrite `json:"body"`
+	Version  *Version       `json:"version"`
 }
 
 func (c *Client) CreatePage(req *PageCreateRequest) (*Page, error) {
@@ -188,6 +189,62 @@ func (c *Client) DeletePage(pageID string) error {
 		return fmt.Errorf("delete page request failed: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) MovePage(pageID, newParentID string) (*Page, error) {
+	if strings.TrimSpace(pageID) == "" {
+		return nil, fmt.Errorf("pageID cannot be empty")
+	}
+	if strings.TrimSpace(newParentID) == "" {
+		return nil, fmt.Errorf("newParentID cannot be empty")
+	}
+
+	// Fetch source page
+	sourcePage, err := c.GetPage(pageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source page: %w", err)
+	}
+
+	// Fetch target parent page
+	targetPage, err := c.GetPage(newParentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get target parent page: %w", err)
+	}
+
+	// Check for cross-space move
+	if sourcePage.SpaceID != targetPage.SpaceID {
+		return nil, fmt.Errorf("cross-space moves are not supported; use create and delete instead")
+	}
+
+	// Get body content
+	bodyValue := ""
+	if sourcePage.Body != nil && sourcePage.Body.Storage != nil {
+		bodyValue = sourcePage.Body.Storage.Value
+	}
+
+	// Build update request
+	newVersion := 1
+	if sourcePage.Version != nil {
+		newVersion = sourcePage.Version.Number + 1
+	}
+
+	req := &PageUpdateRequest{
+		ID:       pageID,
+		SpaceID:  sourcePage.SpaceID,
+		Status:   "current",
+		Title:    sourcePage.Title,
+		ParentID: newParentID,
+		Body: &PageBodyWrite{
+			Representation: "storage",
+			Value:          bodyValue,
+		},
+		Version: &Version{
+			Number:  newVersion,
+			Message: fmt.Sprintf("Moved to parent %s", newParentID),
+		},
+	}
+
+	return c.UpdatePage(pageID, req)
 }
 
 func (c *Client) ListPages(spaceID string, limit int, sort string) ([]Page, error) {

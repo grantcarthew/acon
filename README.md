@@ -222,6 +222,33 @@ Arguments:
 acon page delete 123456789
 ```
 
+#### `acon page move`
+
+Move a Confluence page to a new parent within the same space.
+
+```bash
+acon page move PAGE_ID [flags]
+
+Arguments:
+  PAGE_ID   Confluence page ID (required)
+
+Flags:
+  -j, --json            Output JSON instead of human-readable format
+  -p, --parent string   Target parent page ID (required)
+```
+
+**Examples**:
+
+```bash
+# Move a page under a new parent
+acon page move 123456789 --parent 987654321
+
+# JSON output
+acon page move 123456789 --parent 987654321 -j
+```
+
+**Note**: Cross-space moves are not supported by the Confluence API. To move a page to a different space, create the page in the new space and delete the original.
+
 #### `acon page list`
 
 List pages in a Confluence space or children of a specific page.

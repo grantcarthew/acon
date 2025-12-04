@@ -29,6 +29,7 @@ var (
 	pageDesc   bool
 	outputJSON bool
 	updateMsg  string
+	moveParent string
 )
 
 // mapChildSortValue converts friendly sort names to API values for child pages
@@ -383,6 +384,43 @@ var pageListCmd = &cobra.Command{
 	},
 }
 
+var pageMoveCmd = &cobra.Command{
+	Use:   "move PAGE_ID",
+	Short: "Move a page to a new parent",
+	Long:  "Move a Confluence page to a new parent page within the same space",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
+		pageID := args[0]
+
+		if moveParent == "" {
+			fmt.Fprintf(os.Stderr, "Error: --parent flag is required\n")
+			os.Exit(1)
+		}
+
+		result, err := client.MovePage(pageID, moveParent)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error moving page: %v\n", err)
+			os.Exit(1)
+		}
+
+		if outputJSON {
+			printJSON(result)
+		} else {
+			fmt.Printf("Page moved successfully\n")
+			fmt.Printf("ID: %s\n", result.ID)
+			fmt.Printf("Title: %s\n", result.Title)
+			fmt.Printf("New Parent ID: %s\n", moveParent)
+		}
+	},
+}
+
 func readAndValidateContent(pageFile string) ([]byte, error) {
 	var content []byte
 	var err error
@@ -452,9 +490,14 @@ func init() {
 	pageListCmd.Flags().BoolVar(&pageDesc, "desc", false, "Sort in descending order")
 	pageListCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
+	pageMoveCmd.Flags().StringVarP(&moveParent, "parent", "p", "", "Target parent page ID (required)")
+	pageMoveCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
+	pageMoveCmd.MarkFlagRequired("parent")
+
 	pageCmd.AddCommand(pageCreateCmd)
 	pageCmd.AddCommand(pageViewCmd)
 	pageCmd.AddCommand(pageUpdateCmd)
 	pageCmd.AddCommand(pageDeleteCmd)
 	pageCmd.AddCommand(pageListCmd)
+	pageCmd.AddCommand(pageMoveCmd)
 }

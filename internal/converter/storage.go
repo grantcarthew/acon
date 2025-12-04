@@ -47,8 +47,7 @@ func StorageToMarkdown(storage string) (string, error) {
 			language = strings.TrimSpace(langMatch[1])
 		}
 
-		// Escape HTML entities in code content
-		code = strings.ReplaceAll(code, "&", "&amp;")
+		// Escape HTML entities in code content (< and > must be escaped for HTML parsing)
 		code = strings.ReplaceAll(code, "<", "&lt;")
 		code = strings.ReplaceAll(code, ">", "&gt;")
 

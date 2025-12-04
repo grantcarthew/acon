@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/grantcarthew/acon/internal/api"
 	"github.com/grantcarthew/acon/internal/config"
@@ -24,30 +23,28 @@ var spaceViewCmd = &cobra.Command{
 	Short: "View a space",
 	Long:  "View details of a Confluence space",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		spaceKey := args[0]
 
-		space, err := client.GetSpace(spaceKey)
+		space, err := client.GetSpace(cmd.Context(), spaceKey)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting space: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("getting space: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(space)
-		} else {
-			fmt.Printf("ID: %s\n", space.ID)
-			fmt.Printf("Key: %s\n", space.Key)
-			fmt.Printf("Name: %s\n", space.Name)
-			fmt.Printf("Type: %s\n", space.Type)
+			return printJSON(space)
 		}
+		fmt.Printf("ID: %s\n", space.ID)
+		fmt.Printf("Key: %s\n", space.Key)
+		fmt.Printf("Name: %s\n", space.Name)
+		fmt.Printf("Type: %s\n", space.Type)
+		return nil
 	},
 }
 
@@ -55,33 +52,31 @@ var spaceListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List spaces",
 	Long:  "List Confluence spaces",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
-		spaces, err := client.ListSpaces(spaceLimit)
+		spaces, err := client.ListSpaces(cmd.Context(), spaceLimit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing spaces: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("listing spaces: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(spaces)
-		} else {
-			fmt.Println("Confluence Spaces:\n")
-			for _, space := range spaces {
-				fmt.Printf("Key: %s\n", space.Key)
-				fmt.Printf("Name: %s\n", space.Name)
-				fmt.Printf("Type: %s\n", space.Type)
-				fmt.Printf("ID: %s\n", space.ID)
-				fmt.Println("---")
-			}
+			return printJSON(spaces)
 		}
+		fmt.Println("Confluence Spaces:")
+		for _, space := range spaces {
+			fmt.Printf("Key: %s\n", space.Key)
+			fmt.Printf("Name: %s\n", space.Name)
+			fmt.Printf("Type: %s\n", space.Type)
+			fmt.Printf("ID: %s\n", space.ID)
+			fmt.Println("---")
+		}
+		return nil
 	},
 }
 

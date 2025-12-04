@@ -9,29 +9,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var useGoldmark bool
-
 var debugCmd = &cobra.Command{
 	Use:   "debug",
 	Short: "Debug markdown to storage conversion",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		markdown, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("reading stdin: %w", err)
 		}
 
-		var storage string
-		if useGoldmark {
-			storage = converter.MarkdownToStorageGoldmark(string(markdown))
-		} else {
-			storage = converter.MarkdownToStorage(string(markdown))
-		}
+		storage := converter.MarkdownToStorage(string(markdown))
 		fmt.Println(storage)
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(debugCmd)
-	debugCmd.Flags().BoolVarP(&useGoldmark, "goldmark", "g", true, "Use goldmark parser (default true)")
 }

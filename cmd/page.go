@@ -99,11 +99,10 @@ var pageCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new page",
 	Long:  "Create a new Confluence page from markdown file or stdin",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
@@ -113,16 +112,14 @@ var pageCreateCmd = &cobra.Command{
 			spaceKey = cfg.SpaceKey
 		}
 
-		space, err := client.GetSpace(spaceKey)
+		space, err := client.GetSpace(cmd.Context(), spaceKey)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting space: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("getting space: %w", err)
 		}
 
 		content, err := readAndValidateContent(pageFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		htmlContent := converter.MarkdownToStorage(string(content))
@@ -141,20 +138,19 @@ var pageCreateCmd = &cobra.Command{
 			req.ParentID = pageParent
 		}
 
-		result, err := client.CreatePage(req)
+		result, err := client.CreatePage(cmd.Context(), req)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating page: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("creating page: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(result)
-		} else {
-			fmt.Printf("Page created successfully\n")
-			fmt.Printf("ID: %s\n", result.ID)
-			fmt.Printf("Title: %s\n", result.Title)
-			fmt.Printf("URL: %s/wiki/spaces/%s/pages/%s\n", cfg.BaseURL, spaceKey, result.ID)
+			return printJSON(result)
 		}
+		fmt.Printf("Page created successfully\n")
+		fmt.Printf("ID: %s\n", result.ID)
+		fmt.Printf("Title: %s\n", result.Title)
+		fmt.Printf("URL: %s/wiki/spaces/%s/pages/%s\n", cfg.BaseURL, spaceKey, result.ID)
+		return nil
 	},
 }
 
@@ -163,41 +159,39 @@ var pageViewCmd = &cobra.Command{
 	Short: "View a page",
 	Long:  "View details of a Confluence page",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
-		page, err := client.GetPage(pageID)
+		page, err := client.GetPage(cmd.Context(), pageID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting page: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("getting page: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(page)
-		} else {
-			fmt.Printf("ID: %s\n", page.ID)
-			fmt.Printf("Title: %s\n", page.Title)
-			fmt.Printf("Status: %s\n", page.Status)
-			if page.Version != nil {
-				fmt.Printf("Version: %d\n", page.Version.Number)
-			}
-			if page.Body != nil && page.Body.Storage != nil {
-				markdown, err := converter.StorageToMarkdown(page.Body.Storage.Value)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to convert to markdown: %v\n", err)
-					fmt.Printf("\nContent:\n%s\n", page.Body.Storage.Value)
-				} else {
-					fmt.Printf("\nContent:\n%s\n", markdown)
-				}
+			return printJSON(page)
+		}
+		fmt.Printf("ID: %s\n", page.ID)
+		fmt.Printf("Title: %s\n", page.Title)
+		fmt.Printf("Status: %s\n", page.Status)
+		if page.Version != nil {
+			fmt.Printf("Version: %d\n", page.Version.Number)
+		}
+		if page.Body != nil && page.Body.Storage != nil {
+			markdown, err := converter.StorageToMarkdown(page.Body.Storage.Value)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to convert to markdown: %v\n", err)
+				fmt.Printf("\nContent:\n%s\n", page.Body.Storage.Value)
+			} else {
+				fmt.Printf("\nContent:\n%s\n", markdown)
 			}
 		}
+		return nil
 	},
 }
 
@@ -206,26 +200,23 @@ var pageUpdateCmd = &cobra.Command{
 	Short: "Update a page",
 	Long:  "Update an existing Confluence page",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
-		existing, err := client.GetPage(pageID)
+		existing, err := client.GetPage(cmd.Context(), pageID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting existing page: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("getting existing page: %w", err)
 		}
 
 		content, err := readAndValidateContent(pageFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		htmlContent := converter.MarkdownToStorage(string(content))
@@ -255,22 +246,21 @@ var pageUpdateCmd = &cobra.Command{
 			},
 		}
 
-		result, err := client.UpdatePage(pageID, req)
+		result, err := client.UpdatePage(cmd.Context(), pageID, req)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error updating page: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("updating page: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(result)
-		} else {
-			fmt.Printf("Page updated successfully\n")
-			fmt.Printf("ID: %s\n", result.ID)
-			fmt.Printf("Title: %s\n", result.Title)
-			if result.Version != nil {
-				fmt.Printf("Version: %d\n", result.Version.Number)
-			}
+			return printJSON(result)
 		}
+		fmt.Printf("Page updated successfully\n")
+		fmt.Printf("ID: %s\n", result.ID)
+		fmt.Printf("Title: %s\n", result.Title)
+		if result.Version != nil {
+			fmt.Printf("Version: %d\n", result.Version.Number)
+		}
+		return nil
 	},
 }
 
@@ -279,22 +269,21 @@ var pageDeleteCmd = &cobra.Command{
 	Short: "Delete a page",
 	Long:  "Delete a Confluence page",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
-		if err := client.DeletePage(pageID); err != nil {
-			fmt.Fprintf(os.Stderr, "Error deleting page: %v\n", err)
-			os.Exit(1)
+		if err := client.DeletePage(cmd.Context(), pageID); err != nil {
+			return fmt.Errorf("deleting page: %w", err)
 		}
 
 		fmt.Printf("Page %s deleted successfully\n", pageID)
+		return nil
 	},
 }
 
@@ -302,11 +291,10 @@ var pageListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List pages",
 	Long:  "List pages in a Confluence space",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
@@ -317,14 +305,12 @@ var pageListCmd = &cobra.Command{
 			// List children of a specific parent page
 			sortValue, valid := mapChildSortValue(pageSort, pageDesc)
 			if !valid {
-				fmt.Fprintf(os.Stderr, "Error: invalid sort value '%s' (valid: web, title, created, modified, id)\n", pageSort)
-				os.Exit(1)
+				return fmt.Errorf("invalid sort value '%s' (valid: web, title, created, modified, id)", pageSort)
 			}
 			var err error
-			pages, err = client.GetChildPages(pageParent, pageLimit, sortValue)
+			pages, err = client.GetChildPages(cmd.Context(), pageParent, pageLimit, sortValue)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error listing child pages: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("listing child pages: %w", err)
 			}
 
 			// Client-side title sort (not supported by API)
@@ -345,42 +331,39 @@ var pageListCmd = &cobra.Command{
 
 			sortValue := mapSpaceSortValue(pageSort, pageDesc)
 			if sortValue == "" && pageSort != "" {
-				fmt.Fprintf(os.Stderr, "Error: invalid sort value '%s' (valid: title, created, modified, id)\n", pageSort)
-				os.Exit(1)
+				return fmt.Errorf("invalid sort value '%s' (valid: title, created, modified, id)", pageSort)
 			}
 
-			space, err := client.GetSpace(spaceKey)
+			space, err := client.GetSpace(cmd.Context(), spaceKey)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error getting space: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("getting space: %w", err)
 			}
 
-			pages, err = client.ListPages(space.ID, pageLimit, sortValue)
+			pages, err = client.ListPages(cmd.Context(), space.ID, pageLimit, sortValue)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error listing pages: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("listing pages: %w", err)
 			}
 		}
 
 		if outputJSON {
-			printJSON(pages)
-		} else {
-			if pageParent != "" {
-				fmt.Printf("Child pages of %s:\n\n", pageParent)
-			} else {
-				spaceKey := pageSpace
-				if spaceKey == "" {
-					spaceKey = cfg.SpaceKey
-				}
-				fmt.Printf("Pages in space %s:\n\n", spaceKey)
-			}
-			for _, page := range pages {
-				fmt.Printf("ID: %s\n", page.ID)
-				fmt.Printf("Title: %s\n", page.Title)
-				fmt.Printf("Status: %s\n", page.Status)
-				fmt.Println("---")
-			}
+			return printJSON(pages)
 		}
+		if pageParent != "" {
+			fmt.Printf("Child pages of %s:\n\n", pageParent)
+		} else {
+			spaceKey := pageSpace
+			if spaceKey == "" {
+				spaceKey = cfg.SpaceKey
+			}
+			fmt.Printf("Pages in space %s:\n\n", spaceKey)
+		}
+		for _, page := range pages {
+			fmt.Printf("ID: %s\n", page.ID)
+			fmt.Printf("Title: %s\n", page.Title)
+			fmt.Printf("Status: %s\n", page.Status)
+			fmt.Println("---")
+		}
+		return nil
 	},
 }
 
@@ -389,35 +372,32 @@ var pageMoveCmd = &cobra.Command{
 	Short: "Move a page to a new parent",
 	Long:  "Move a Confluence page to a new parent page within the same space",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
 		if moveParent == "" {
-			fmt.Fprintf(os.Stderr, "Error: --parent flag is required\n")
-			os.Exit(1)
+			return fmt.Errorf("--parent flag is required")
 		}
 
-		result, err := client.MovePage(pageID, moveParent)
+		result, err := client.MovePage(cmd.Context(), pageID, moveParent)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error moving page: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("moving page: %w", err)
 		}
 
 		if outputJSON {
-			printJSON(result)
-		} else {
-			fmt.Printf("Page moved successfully\n")
-			fmt.Printf("ID: %s\n", result.ID)
-			fmt.Printf("Title: %s\n", result.Title)
-			fmt.Printf("New Parent ID: %s\n", moveParent)
+			return printJSON(result)
 		}
+		fmt.Printf("Page moved successfully\n")
+		fmt.Printf("ID: %s\n", result.ID)
+		fmt.Printf("Title: %s\n", result.Title)
+		fmt.Printf("New Parent ID: %s\n", moveParent)
+		return nil
 	},
 }
 
@@ -459,13 +439,13 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 	return content, nil
 }
 
-func printJSON(v interface{}) {
+func printJSON(v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling JSON: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("marshaling JSON: %w", err)
 	}
 	fmt.Println(string(data))
+	return nil
 }
 
 func init() {

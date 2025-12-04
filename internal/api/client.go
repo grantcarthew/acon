@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -54,12 +55,19 @@ type Space struct {
 	Type string `json:"type"`
 }
 
+// PaginationLinks represents the _links field in paginated API responses
+type PaginationLinks struct {
+	Next string `json:"next,omitempty"`
+}
+
 type PageListResponse struct {
-	Results []Page `json:"results"`
+	Results []Page          `json:"results"`
+	Links   PaginationLinks `json:"_links,omitempty"`
 }
 
 type SpaceListResponse struct {
-	Results []Space `json:"results"`
+	Results []Space         `json:"results"`
+	Links   PaginationLinks `json:"_links,omitempty"`
 }
 
 func NewClient(baseURL, email, apiToken string) *Client {
@@ -73,7 +81,7 @@ func NewClient(baseURL, email, apiToken string) *Client {
 	}
 }
 
-func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
@@ -84,7 +92,7 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	}
 
 	url := c.BaseURL + path
-	req, err := http.NewRequest(method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -129,8 +137,8 @@ type PageUpdateRequest struct {
 	Version  *Version       `json:"version"`
 }
 
-func (c *Client) CreatePage(req *PageCreateRequest) (*Page, error) {
-	respBody, err := c.doRequest("POST", "/wiki/api/v2/pages", req)
+func (c *Client) CreatePage(ctx context.Context, req *PageCreateRequest) (*Page, error) {
+	respBody, err := c.doRequest(ctx, "POST", "/wiki/api/v2/pages", req)
 	if err != nil {
 		return nil, fmt.Errorf("create page request failed: %w", err)
 	}
@@ -143,12 +151,12 @@ func (c *Client) CreatePage(req *PageCreateRequest) (*Page, error) {
 	return &result, nil
 }
 
-func (c *Client) GetPage(pageID string) (*Page, error) {
+func (c *Client) GetPage(ctx context.Context, pageID string) (*Page, error) {
 	if strings.TrimSpace(pageID) == "" {
 		return nil, fmt.Errorf("pageID cannot be empty")
 	}
 
-	respBody, err := c.doRequest("GET", fmt.Sprintf("/wiki/api/v2/pages/%s?body-format=storage", pageID), nil)
+	respBody, err := c.doRequest(ctx, "GET", fmt.Sprintf("/wiki/api/v2/pages/%s?body-format=storage", pageID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("get page request failed: %w", err)
 	}
@@ -161,12 +169,12 @@ func (c *Client) GetPage(pageID string) (*Page, error) {
 	return &result, nil
 }
 
-func (c *Client) UpdatePage(pageID string, req *PageUpdateRequest) (*Page, error) {
+func (c *Client) UpdatePage(ctx context.Context, pageID string, req *PageUpdateRequest) (*Page, error) {
 	if strings.TrimSpace(pageID) == "" {
 		return nil, fmt.Errorf("pageID cannot be empty")
 	}
 
-	respBody, err := c.doRequest("PUT", fmt.Sprintf("/wiki/api/v2/pages/%s", pageID), req)
+	respBody, err := c.doRequest(ctx, "PUT", fmt.Sprintf("/wiki/api/v2/pages/%s", pageID), req)
 	if err != nil {
 		return nil, fmt.Errorf("update page request failed: %w", err)
 	}
@@ -179,19 +187,19 @@ func (c *Client) UpdatePage(pageID string, req *PageUpdateRequest) (*Page, error
 	return &result, nil
 }
 
-func (c *Client) DeletePage(pageID string) error {
+func (c *Client) DeletePage(ctx context.Context, pageID string) error {
 	if strings.TrimSpace(pageID) == "" {
 		return fmt.Errorf("pageID cannot be empty")
 	}
 
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/wiki/api/v2/pages/%s", pageID), nil)
+	_, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/wiki/api/v2/pages/%s", pageID), nil)
 	if err != nil {
 		return fmt.Errorf("delete page request failed: %w", err)
 	}
 	return nil
 }
 
-func (c *Client) MovePage(pageID, newParentID string) (*Page, error) {
+func (c *Client) MovePage(ctx context.Context, pageID, newParentID string) (*Page, error) {
 	if strings.TrimSpace(pageID) == "" {
 		return nil, fmt.Errorf("pageID cannot be empty")
 	}
@@ -200,13 +208,13 @@ func (c *Client) MovePage(pageID, newParentID string) (*Page, error) {
 	}
 
 	// Fetch source page
-	sourcePage, err := c.GetPage(pageID)
+	sourcePage, err := c.GetPage(ctx, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get source page: %w", err)
 	}
 
 	// Fetch target parent page
-	targetPage, err := c.GetPage(newParentID)
+	targetPage, err := c.GetPage(ctx, newParentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get target parent page: %w", err)
 	}
@@ -244,59 +252,103 @@ func (c *Client) MovePage(pageID, newParentID string) (*Page, error) {
 		},
 	}
 
-	return c.UpdatePage(pageID, req)
+	return c.UpdatePage(ctx, pageID, req)
 }
 
-func (c *Client) ListPages(spaceID string, limit int, sort string) ([]Page, error) {
+const maxPerPage = 25 // Confluence API v2 max per request
+
+func (c *Client) ListPages(ctx context.Context, spaceID string, limit int, sort string) ([]Page, error) {
 	if strings.TrimSpace(spaceID) == "" {
 		return nil, fmt.Errorf("spaceID cannot be empty")
 	}
 
-	path := fmt.Sprintf("/wiki/api/v2/pages?space-id=%s&limit=%d&body-format=storage", spaceID, limit)
+	var allPages []Page
+	perPage := min(limit, maxPerPage)
+
+	path := fmt.Sprintf("/wiki/api/v2/pages?space-id=%s&limit=%d&body-format=storage", spaceID, perPage)
 	if strings.TrimSpace(sort) != "" {
 		path += fmt.Sprintf("&sort=%s", sort)
 	}
-	respBody, err := c.doRequest("GET", path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("list pages request failed: %w", err)
+
+	for {
+		respBody, err := c.doRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list pages request failed: %w", err)
+		}
+
+		var result PageListResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse list pages response: %w", err)
+		}
+
+		allPages = append(allPages, result.Results...)
+
+		// Stop if we have enough or no more pages
+		if len(allPages) >= limit || result.Links.Next == "" {
+			break
+		}
+
+		// Use the next link for subsequent requests
+		path = result.Links.Next
 	}
 
-	var result PageListResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse list pages response: %w", err)
+	// Trim to exact limit
+	if len(allPages) > limit {
+		allPages = allPages[:limit]
 	}
 
-	return result.Results, nil
+	return allPages, nil
 }
 
-func (c *Client) GetChildPages(parentID string, limit int, sort string) ([]Page, error) {
+func (c *Client) GetChildPages(ctx context.Context, parentID string, limit int, sort string) ([]Page, error) {
 	if strings.TrimSpace(parentID) == "" {
 		return nil, fmt.Errorf("parentID cannot be empty")
 	}
 
-	path := fmt.Sprintf("/wiki/api/v2/pages/%s/children?limit=%d", parentID, limit)
+	var allPages []Page
+	perPage := min(limit, maxPerPage)
+
+	path := fmt.Sprintf("/wiki/api/v2/pages/%s/children?limit=%d", parentID, perPage)
 	if strings.TrimSpace(sort) != "" {
 		path += fmt.Sprintf("&sort=%s", sort)
 	}
-	respBody, err := c.doRequest("GET", path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("get child pages request failed: %w", err)
+
+	for {
+		respBody, err := c.doRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("get child pages request failed: %w", err)
+		}
+
+		var result PageListResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse child pages response: %w", err)
+		}
+
+		allPages = append(allPages, result.Results...)
+
+		// Stop if we have enough or no more pages
+		if len(allPages) >= limit || result.Links.Next == "" {
+			break
+		}
+
+		// Use the next link for subsequent requests
+		path = result.Links.Next
 	}
 
-	var result PageListResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse child pages response: %w", err)
+	// Trim to exact limit
+	if len(allPages) > limit {
+		allPages = allPages[:limit]
 	}
 
-	return result.Results, nil
+	return allPages, nil
 }
 
-func (c *Client) GetSpace(spaceKey string) (*Space, error) {
+func (c *Client) GetSpace(ctx context.Context, spaceKey string) (*Space, error) {
 	if strings.TrimSpace(spaceKey) == "" {
 		return nil, fmt.Errorf("spaceKey cannot be empty")
 	}
 
-	respBody, err := c.doRequest("GET", fmt.Sprintf("/wiki/api/v2/spaces?keys=%s", spaceKey), nil)
+	respBody, err := c.doRequest(ctx, "GET", fmt.Sprintf("/wiki/api/v2/spaces?keys=%s", spaceKey), nil)
 	if err != nil {
 		return nil, fmt.Errorf("get space request failed: %w", err)
 	}
@@ -313,17 +365,38 @@ func (c *Client) GetSpace(spaceKey string) (*Space, error) {
 	return &result.Results[0], nil
 }
 
-func (c *Client) ListSpaces(limit int) ([]Space, error) {
-	path := fmt.Sprintf("/wiki/api/v2/spaces?limit=%d", limit)
-	respBody, err := c.doRequest("GET", path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("list spaces request failed: %w", err)
+func (c *Client) ListSpaces(ctx context.Context, limit int) ([]Space, error) {
+	var allSpaces []Space
+	perPage := min(limit, maxPerPage)
+
+	path := fmt.Sprintf("/wiki/api/v2/spaces?limit=%d", perPage)
+
+	for {
+		respBody, err := c.doRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list spaces request failed: %w", err)
+		}
+
+		var result SpaceListResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse list spaces response: %w", err)
+		}
+
+		allSpaces = append(allSpaces, result.Results...)
+
+		// Stop if we have enough or no more pages
+		if len(allSpaces) >= limit || result.Links.Next == "" {
+			break
+		}
+
+		// Use the next link for subsequent requests
+		path = result.Links.Next
 	}
 
-	var result SpaceListResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse list spaces response: %w", err)
+	// Trim to exact limit
+	if len(allSpaces) > limit {
+		allSpaces = allSpaces[:limit]
 	}
 
-	return result.Results, nil
+	return allSpaces, nil
 }

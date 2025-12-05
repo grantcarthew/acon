@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document table formatting issues in Confluence storage format
 
-## <https://github.com/grantcarthew/acon/releases/tag/v1.0.0> - 2025-11-27
+## [1.0.0](https://github.com/grantcarthew/acon/releases/tag/v1.0.0) - 2025-11-27
 
 ### Added
 

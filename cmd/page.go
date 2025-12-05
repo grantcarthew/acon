@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/grantcarthew/acon/internal/api"
-	"github.com/grantcarthew/acon/internal/config"
 	"github.com/grantcarthew/acon/internal/converter"
 	"github.com/spf13/cobra"
 )
@@ -100,12 +99,10 @@ var pageCreateCmd = &cobra.Command{
 	Short: "Create a new page",
 	Long:  "Create a new Confluence page from markdown file or stdin",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, cfg, err := initClient()
 		if err != nil {
 			return err
 		}
-
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
 		spaceKey := pageSpace
 		if spaceKey == "" {
@@ -160,12 +157,11 @@ var pageViewCmd = &cobra.Command{
 	Long:  "View details of a Confluence page",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
 		page, err := client.GetPage(cmd.Context(), pageID)
@@ -201,12 +197,11 @@ var pageUpdateCmd = &cobra.Command{
 	Long:  "Update an existing Confluence page",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
 		existing, err := client.GetPage(cmd.Context(), pageID)
@@ -270,12 +265,11 @@ var pageDeleteCmd = &cobra.Command{
 	Long:  "Delete a Confluence page",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
 		if err := client.DeletePage(cmd.Context(), pageID); err != nil {
@@ -292,12 +286,10 @@ var pageListCmd = &cobra.Command{
 	Short: "List pages",
 	Long:  "List pages in a Confluence space",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, cfg, err := initClient()
 		if err != nil {
 			return err
 		}
-
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
 		var pages []api.Page
 
@@ -373,12 +365,11 @@ var pageMoveCmd = &cobra.Command{
 	Long:  "Move a Confluence page to a new parent page within the same space",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		pageID := args[0]
 
 		if moveParent == "" {

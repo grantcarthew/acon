@@ -16,6 +16,8 @@ acon page update 123456 -f docs.md
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Go Report Card](https://goreportcard.com/badge/github.com/grantcarthew/acon)](https://goreportcard.com/report/github.com/grantcarthew/acon)
+[![Go Reference](https://pkg.go.dev/badge/github.com/grantcarthew/acon.svg)](https://pkg.go.dev/github.com/grantcarthew/acon)
+[![GitHub Release](https://img.shields.io/github/v/release/grantcarthew/acon)](https://github.com/grantcarthew/acon/releases/latest)
 
 ## Features
 
@@ -31,6 +33,7 @@ acon page update 123456 -f docs.md
 ### Installation
 
 **Homebrew** (macOS/Linux):
+
 ```bash
 # Add the tap first
 brew tap grantcarthew/tap
@@ -42,14 +45,16 @@ brew install acon
 brew install grantcarthew/tap/acon
 ```
 
-*Check out [my other Homebrew packages](https://github.com/grantcarthew/homebrew-tap) in the tap!*
+_Check out [my other Homebrew packages](https://github.com/grantcarthew/homebrew-tap) in the tap!_
 
 **Go install**:
+
 ```bash
 go install github.com/grantcarthew/acon@latest
 ```
 
 **From source**:
+
 ```bash
 git clone https://github.com/grantcarthew/acon.git
 cd acon
@@ -68,7 +73,7 @@ export CONFLUENCE_API_TOKEN="your-api-token"
 export CONFLUENCE_SPACE_KEY="YOUR_SPACE"  # (Optional)
 ```
 
-Get an API token at: https://id.atlassian.com/manage-profile/security/api-tokens
+Get an API token at: <https://id.atlassian.com/manage-profile/security/api-tokens>
 
 **Note**: The same API token works for Confluence and Jira. You can use `CONFLUENCE_API_TOKEN`, `ATLASSIAN_API_TOKEN`, or `JIRA_API_TOKEN`.
 
@@ -98,6 +103,7 @@ acon [command]
 Available Commands:
   page        Manage Confluence pages
   space       Manage Confluence spaces
+  debug       Debug converter functions
   completion  Generate shell completion
   help        Help about any command
 
@@ -266,6 +272,7 @@ Flags:
 ```
 
 **Sort options**:
+
 - With `--parent`: `web` (default), `title`, `created`, `modified`, `id`
 - Without `--parent`: `title`, `created`, `modified`, `id`
 
@@ -350,6 +357,28 @@ acon space list -l 10
 acon space list -j
 ```
 
+### Debug Commands
+
+Debug commands help troubleshoot Markdown conversion issues.
+
+#### `acon debug md`
+
+Convert Markdown to Confluence storage format (for debugging).
+
+```bash
+echo "# Test" | acon debug md
+cat document.md | acon debug md
+```
+
+#### `acon debug storage`
+
+Convert Confluence storage format to Markdown (for debugging).
+
+```bash
+echo "<h1>Test</h1>" | acon debug storage
+cat storage.xml | acon debug storage
+```
+
 ### Shell Completion
 
 Generate shell completion scripts for Bash, Zsh, or Fish.
@@ -397,12 +426,17 @@ Your Markdown is automatically converted to Confluence storage format:
 Confluence storage format is converted back to clean, readable Markdown - perfect for editing locally.
 
 **Supported conversions**:
+
 - Tables
 - Nested lists
 - Code blocks with syntax highlighting
 - Links (internal and external)
 - Strikethrough
 - All CommonMark features
+
+### Feature Support Details
+
+For a complete feature support matrix, known limitations, and Confluence-specific quirks, see the [testdata/README.md](testdata/README.md) documentation.
 
 ## Examples
 
@@ -530,7 +564,8 @@ acon/
 ├── cmd/                    # Cobra CLI commands
 │   ├── root.go            # Root command and version
 │   ├── page.go            # Page subcommands
-│   └── space.go           # Space subcommands
+│   ├── space.go           # Space subcommands
+│   └── debug.go           # Debug subcommands
 ├── internal/
 │   ├── api/               # Confluence REST API client
 │   │   └── client.go
@@ -543,6 +578,10 @@ acon/
 │   └── tasks/
 │       ├── code-review.md
 │       └── release-process.md
+├── testdata/              # Test fixtures and feature documentation
+│   ├── comprehensive-test.md  # Full Markdown feature test
+│   ├── roundtrip-test.sh      # Automated round-trip testing
+│   └── README.md          # Feature support matrix and known gaps
 ├── main.go                # Entry point
 ├── AGENTS.md              # Agent development guidelines
 └── README.md
@@ -551,7 +590,7 @@ acon/
 ### Dependencies
 
 - [cobra](https://github.com/spf13/cobra) - CLI framework
-- [html-to-markdown](https://github.com/JohannesKaufmann/html-to-markdown) - Confluence storage to Markdown converter
+- [html-to-Markdown](https://github.com/JohannesKaufmann/html-to-markdown) - Confluence storage to Markdown converter
 
 ### Contributing
 
@@ -571,6 +610,7 @@ See [AGENTS.md](AGENTS.md) for detailed development guidelines.
 ### "API token not set" Error
 
 Ensure one of these environment variables is set:
+
 - `CONFLUENCE_API_TOKEN`
 - `ATLASSIAN_API_TOKEN`
 - `JIRA_API_TOKEN`
@@ -648,7 +688,7 @@ A: Absolutely! See the [CI/CD Integration example](#cicd-integration) above.
 
 ## License
 
-This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at <https://mozilla.org/MPL/2.0/>.
 
 See [LICENSE](LICENSE) for full details.
 
@@ -660,4 +700,4 @@ See [LICENSE](LICENSE) for full details.
 
 **Made with ❤️ for everyone who hates editing docs in a web browser.**
 
-*Star this repo if acon makes your documentation workflow better!*
+_Star this repo if acon makes your documentation workflow better!_

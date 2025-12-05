@@ -91,7 +91,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		reqBody = bytes.NewBuffer(jsonData)
 	}
 
-	url := c.BaseURL + path
+	url := strings.TrimRight(c.BaseURL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

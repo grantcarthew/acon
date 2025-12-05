@@ -45,6 +45,12 @@ func (r *ConfluenceRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegister
 	reg.Register(extast.KindTableHeader, r.renderTableHeader)
 	reg.Register(extast.KindTableRow, r.renderTableRow)
 	reg.Register(extast.KindTableCell, r.renderTableCell)
+
+	// Task list extension (GFM)
+	reg.Register(extast.KindTaskCheckBox, r.renderTaskCheckBox)
+
+	// Strikethrough extension (GFM)
+	reg.Register(extast.KindStrikethrough, r.renderStrikethrough)
 }
 
 // Helper to write lines from a node
@@ -54,6 +60,45 @@ func (r *ConfluenceRenderer) writeLines(w util.BufWriter, source []byte, n ast.N
 		line := n.Lines().At(i)
 		w.Write(line.Value(source))
 	}
+}
+
+// isTaskList checks if a list contains task checkboxes
+func isTaskList(node ast.Node) bool {
+	// Check first list item for a task checkbox
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if child.Kind() == ast.KindListItem {
+			// Look for TaskCheckBox in the list item's children
+			for grandchild := child.FirstChild(); grandchild != nil; grandchild = grandchild.NextSibling() {
+				// TaskCheckBox can be direct child or inside a paragraph/textblock
+				if grandchild.Kind() == extast.KindTaskCheckBox {
+					return true
+				}
+				// Check inside paragraph or textblock
+				for greatgrandchild := grandchild.FirstChild(); greatgrandchild != nil; greatgrandchild = greatgrandchild.NextSibling() {
+					if greatgrandchild.Kind() == extast.KindTaskCheckBox {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// getTaskCheckBox finds the TaskCheckBox node in a list item
+func getTaskCheckBox(listItem ast.Node) *extast.TaskCheckBox {
+	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+		if child.Kind() == extast.KindTaskCheckBox {
+			return child.(*extast.TaskCheckBox)
+		}
+		// Check inside paragraph or textblock
+		for grandchild := child.FirstChild(); grandchild != nil; grandchild = grandchild.NextSibling() {
+			if grandchild.Kind() == extast.KindTaskCheckBox {
+				return grandchild.(*extast.TaskCheckBox)
+			}
+		}
+	}
+	return nil
 }
 
 // Document
@@ -134,6 +179,18 @@ func (r *ConfluenceRenderer) renderHTMLBlock(
 func (r *ConfluenceRenderer) renderList(
 	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.List)
+
+	// Check if this is a task list
+	if isTaskList(node) {
+		if entering {
+			w.WriteString("<ac:task-list>\n")
+		} else {
+			w.WriteString("</ac:task-list>\n")
+		}
+		return ast.WalkContinue, nil
+	}
+
+	// Regular list
 	if entering {
 		if n.IsOrdered() {
 			w.WriteString("<ol>\n")
@@ -153,6 +210,25 @@ func (r *ConfluenceRenderer) renderList(
 // ListItem
 func (r *ConfluenceRenderer) renderListItem(
 	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	// Check if parent is a task list
+	parent := node.Parent()
+	if parent != nil && isTaskList(parent) {
+		checkbox := getTaskCheckBox(node)
+		if entering {
+			w.WriteString("<ac:task>\n")
+			if checkbox != nil && checkbox.IsChecked {
+				w.WriteString("<ac:task-status>complete</ac:task-status>\n")
+			} else {
+				w.WriteString("<ac:task-status>incomplete</ac:task-status>\n")
+			}
+			w.WriteString("<ac:task-body>")
+		} else {
+			w.WriteString("</ac:task-body>\n</ac:task>\n")
+		}
+		return ast.WalkContinue, nil
+	}
+
+	// Regular list item
 	if entering {
 		w.WriteString("<li>")
 	} else {
@@ -164,6 +240,16 @@ func (r *ConfluenceRenderer) renderListItem(
 // Paragraph
 func (r *ConfluenceRenderer) renderParagraph(
 	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	// Skip paragraph tags inside task list items (ac:task-body handles content directly)
+	parent := node.Parent()
+	if parent != nil && parent.Kind() == ast.KindListItem {
+		grandparent := parent.Parent()
+		if grandparent != nil && isTaskList(grandparent) {
+			// Don't wrap task item content in <p> tags
+			return ast.WalkContinue, nil
+		}
+	}
+
 	if entering {
 		w.WriteString("<p>")
 	} else {
@@ -260,7 +346,14 @@ func (r *ConfluenceRenderer) renderLink(
 	if entering {
 		w.WriteString(`<a href="`)
 		w.Write(util.EscapeHTML(util.URLEscape(n.Destination, true)))
-		w.WriteString(`">`)
+		w.WriteByte('"')
+		// Add title attribute if present
+		if len(n.Title) > 0 {
+			w.WriteString(` title="`)
+			w.Write(util.EscapeHTML(n.Title))
+			w.WriteByte('"')
+		}
+		w.WriteByte('>')
 	} else {
 		w.WriteString("</a>")
 	}
@@ -361,6 +454,25 @@ func (r *ConfluenceRenderer) renderTableCell(
 		w.WriteString("</")
 		w.WriteString(tag)
 		w.WriteByte('>')
+	}
+	return ast.WalkContinue, nil
+}
+
+// TaskCheckBox - rendered as part of task list item, skip here
+func (r *ConfluenceRenderer) renderTaskCheckBox(
+	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	// TaskCheckBox is handled by the list/listItem rendering for Confluence task format
+	// Skip rendering here to avoid duplicate output
+	return ast.WalkContinue, nil
+}
+
+// Strikethrough
+func (r *ConfluenceRenderer) renderStrikethrough(
+	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if entering {
+		w.WriteString("<del>")
+	} else {
+		w.WriteString("</del>")
 	}
 	return ast.WalkContinue, nil
 }

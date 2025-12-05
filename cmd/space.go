@@ -3,8 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/grantcarthew/acon/internal/api"
-	"github.com/grantcarthew/acon/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +22,11 @@ var spaceViewCmd = &cobra.Command{
 	Long:  "View details of a Confluence space",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
 
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		spaceKey := args[0]
 
 		space, err := client.GetSpace(cmd.Context(), spaceKey)
@@ -53,12 +50,10 @@ var spaceListCmd = &cobra.Command{
 	Short: "List spaces",
 	Long:  "List Confluence spaces",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		client, _, err := initClient()
 		if err != nil {
 			return err
 		}
-
-		client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
 		spaces, err := client.ListSpaces(cmd.Context(), spaceLimit)
 		if err != nil {

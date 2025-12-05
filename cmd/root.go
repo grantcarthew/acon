@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/grantcarthew/acon/internal/api"
+	"github.com/grantcarthew/acon/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -45,4 +47,15 @@ func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Print version")
 	rootCmd.AddCommand(pageCmd)
 	rootCmd.AddCommand(spaceCmd)
+}
+
+// initClient loads configuration and creates an API client.
+// Returns the client and config for commands that need access to config values like SpaceKey.
+func initClient() (*api.Client, *config.Config, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+	client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
+	return client, &cfg, nil
 }

@@ -352,7 +352,7 @@ acon --version
 
 - Wait 1-2 minutes after pushing tag
 - Verify tag exists: `git ls-remote --tags origin | grep v${VERSION}`
-- Check: https://github.com/grantcarthew/acon/tags
+- Check: <https://github.com/grantcarthew/acon/tags>
 
 **Homebrew formula issues**
 

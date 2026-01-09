@@ -108,6 +108,9 @@ var pageCreateCmd = &cobra.Command{
 		if spaceKey == "" {
 			spaceKey = cfg.SpaceKey
 		}
+		if spaceKey == "" {
+			return fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
+		}
 
 		space, err := client.GetSpace(cmd.Context(), spaceKey)
 		if err != nil {
@@ -319,6 +322,9 @@ var pageListCmd = &cobra.Command{
 			spaceKey := pageSpace
 			if spaceKey == "" {
 				spaceKey = cfg.SpaceKey
+			}
+			if spaceKey == "" {
+				return fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
 			}
 
 			sortValue := mapSpaceSortValue(pageSort, pageDesc)

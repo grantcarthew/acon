@@ -2,7 +2,7 @@
 
 > **Purpose**: Repeatable process for releasing new versions of acon
 > **Audience**: AI agents and maintainers performing releases
-> **Last Updated**: 2025-11-27
+> **Last Updated**: 2026-01-09
 
 This document provides step-by-step instructions for releasing acon. Execute each step in order.
 
@@ -25,20 +25,63 @@ Verify before starting:
 
 **Steps**:
 
-1. Run pre-release validation
-2. Determine version number
-3. Commit any pending changes
-4. Create and push git tag
-5. Create GitHub Release
-6. Update Homebrew tap
-7. Verify installation
-8. Clean up
+1. Pre-release review
+2. Run pre-release validation
+3. Determine version number
+4. Update CHANGELOG.md
+5. Commit changes
+6. Create and push git tag
+7. Create GitHub Release
+8. Update Homebrew tap
+9. Verify installation
+10. Clean up
 
-**Estimated Time**: 15-20 minutes
+**Estimated Time**: 25-35 minutes
 
 ---
 
-## Step 1: Pre-Release Validation
+## Step 1: Pre-Release Review
+
+Perform a brief holistic review of the codebase before release. This is a quick glance to identify obvious issues, not a full code review.
+
+**Review the following:**
+
+1. **Active project status** - Check `project.md` if it exists. Verify any active work is complete and ready for release, or confirm no active project blocks the release.
+
+2. **Recent changes** - Review commits since the last release tag. Look for:
+   - Incomplete work (TODO, FIXME, XXX comments in changed files)
+   - Obvious errors or missing error handling
+   - Changes that lack corresponding tests
+
+3. **Documentation currency** - Quick check that:
+   - `README.md` reflects current functionality
+   - Command help text matches implementation (`acon --help`)
+   - `AGENTS.md` is accurate
+
+4. **Code cleanliness** - Scan `internal/` for:
+   - Dead code or commented-out blocks
+   - Debug statements (fmt.Println, log.Println not part of normal output)
+   - Hardcoded values that should be configurable
+
+**Commands to assist review:**
+
+```bash
+# Find TODOs/FIXMEs in Go files
+rg -i "TODO|FIXME|XXX" --type go
+
+# Show commits since last release
+PREV_VERSION=$(git tag -l | tail -1)
+git log ${PREV_VERSION}..HEAD --oneline
+
+# List recently modified Go files
+git diff --name-only ${PREV_VERSION}..HEAD -- "*.go"
+```
+
+**Decision:** Report **GO** if no blocking issues found, or **NO-GO** with specific concerns that must be addressed before release.
+
+---
+
+## Step 2: Pre-Release Validation
 
 Run validation checks:
 
@@ -46,6 +89,20 @@ Run validation checks:
 # Ensure on main branch with latest changes
 git checkout main
 git pull origin main
+
+# Check formatting (should produce no output)
+gofmt -l .
+
+# Run linters
+go vet ./...
+golangci-lint run
+ineffassign ./...
+
+# Check cyclomatic complexity (functions over 15)
+gocyclo -over 15 .
+
+# Verify all tests pass
+go test -v ./...
 
 # Verify build works
 go build -o acon
@@ -58,15 +115,33 @@ git status
 
 **Expected results**:
 
+- `gofmt -l .` produces no output (all files formatted)
+- `go vet ./...` reports no issues
+- `golangci-lint run` reports no errors (warnings acceptable)
+- `ineffassign ./...` reports no issues
+- `gocyclo -over 15 .` reports no functions (or acceptable exceptions)
+- All tests pass
 - Build completes without errors
+- `acon --version` shows current version
 - `git status` shows clean working tree
-- Documentation is current
+
+**Linter installation** (if not already installed):
+
+```bash
+# golangci-lint (comprehensive linter)
+brew install golangci-lint
+# or: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Individual linters
+go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+go install github.com/gordonklaus/ineffassign@latest
+```
 
 **If any validation fails, stop and fix issues before proceeding.**
 
 ---
 
-## Step 2: Determine Version Number
+## Step 3: Determine Version Number
 
 Set the version number using [Semantic Versioning](https://semver.org/):
 
@@ -85,30 +160,78 @@ echo "Releasing version: v${VERSION}"
 
 ---
 
-## Step 3: Commit Any Pending Changes
+## Step 4: Update CHANGELOG.md
 
-Ensure all changes are committed:
+Review changes since last release and update CHANGELOG.md:
 
 ```bash
-# Check for uncommitted changes
-git status
+# Show changes since previous version (or all commits if first release)
+PREV_VERSION=$(git tag -l | tail -1)
+if [ -z "$PREV_VERSION" ]; then
+  echo "First release - showing all commits:"
+  git log --oneline
+else
+  echo "Changes since ${PREV_VERSION}:"
+  git log ${PREV_VERSION}..HEAD --oneline
+fi
 
-# If there are changes, commit them
-git add .
+# Review the changes and categorize them
+# Then edit CHANGELOG.md manually
+```
+
+Update CHANGELOG.md by adding a new version section with:
+
+- **Added**: New features
+- **Changed**: Changes to existing functionality
+- **Fixed**: Bug fixes
+- **Deprecated**: Features marked for removal
+- **Removed**: Removed features
+- **Security**: Security fixes
+
+Example format:
+
+```markdown
+## [1.0.0] - 2026-01-09
+
+### Added
+
+- Initial release with Confluence page management
+- `page` commands: create, view, update, delete, list, move
+- `space` commands: view, list
+- Bidirectional Markdown conversion
+- JSON output support
+
+[Unreleased]: https://github.com/grantcarthew/acon/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/grantcarthew/acon/releases/tag/v1.0.0
+```
+
+---
+
+## Step 5: Commit Changes
+
+Commit the CHANGELOG:
+
+```bash
+# Stage and commit changes
+git add CHANGELOG.md
 git commit -m "chore: prepare for v${VERSION} release"
 git push origin main
 ```
 
 ---
 
-## Step 4: Create and Push Git Tag
+## Step 6: Create and Push Git Tag
 
 Create an annotated git tag:
 
 ```bash
 # Get previous version and review changes
 PREV_VERSION=$(git tag -l | tail -1)
-git log ${PREV_VERSION}..HEAD --oneline
+if [ -z "$PREV_VERSION" ]; then
+  git log --oneline | head -10
+else
+  git log ${PREV_VERSION}..HEAD --oneline
+fi
 
 # Create one-line summary from the changes above
 # Examples: "Initial release", "Add markdown conversion", "Fix API authentication"
@@ -124,7 +247,7 @@ git tag -l -n9 "v${VERSION}"
 
 ---
 
-## Step 5: Create GitHub Release
+## Step 7: Create GitHub Release
 
 Create the GitHub Release with release notes:
 
@@ -132,7 +255,7 @@ Create the GitHub Release with release notes:
 # Wait for tarball to be generated (usually immediate)
 sleep 5
 
-# Get tarball SHA256 for Homebrew (will use in Step 6)
+# Get tarball SHA256 for Homebrew (will use in Step 8)
 TARBALL_URL="https://github.com/grantcarthew/acon/archive/refs/tags/v${VERSION}.tar.gz"
 # macOS:
 TARBALL_SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | cut -d' ' -f1)
@@ -141,14 +264,22 @@ TARBALL_SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | cut -d' ' -f1)
 echo "Tarball SHA256: $TARBALL_SHA256"
 
 # Create GitHub Release using gh CLI
+PREV_VERSION=$(git tag -l | grep -v "v${VERSION}" | tail -1)
+if [ -z "$PREV_VERSION" ]; then
+  # First release
+  NOTES=$(git log --pretty=format:"- %s" --reverse | head -20)
+else
+  NOTES=$(git log ${PREV_VERSION}..v${VERSION} --pretty=format:"- %s" --reverse)
+fi
+
 gh release create "v${VERSION}" \
   --title "Release v${VERSION}" \
   --notes "$(cat <<EOF
 ## Changes
 
-$(git log ${PREV_VERSION}..v${VERSION} --pretty=format:"- %s" --reverse)
+${NOTES}
 
-See [README.md](https://github.com/grantcarthew/acon/blob/main/README.md) for documentation.
+See [CHANGELOG.md](https://github.com/grantcarthew/acon/blob/main/CHANGELOG.md) for details.
 EOF
 )"
 
@@ -160,7 +291,7 @@ gh release view "v${VERSION}"
 
 ---
 
-## Step 6: Update Homebrew Tap
+## Step 8: Update Homebrew Tap
 
 Update the Homebrew formula with the new version:
 
@@ -169,7 +300,7 @@ Update the Homebrew formula with the new version:
 cd ~/Projects/homebrew-tap
 git pull origin main
 
-# Display tarball info from Step 5
+# Display tarball info from Step 7
 echo "Tarball URL: $TARBALL_URL"
 echo "Tarball SHA256: $TARBALL_SHA256"
 
@@ -213,7 +344,7 @@ end
 
 ---
 
-## Step 7: Verify Installation
+## Step 9: Verify Installation
 
 Test the Homebrew installation:
 
@@ -246,7 +377,7 @@ brew install --verbose grantcarthew/tap/acon
 
 ---
 
-## Step 8: Clean Up
+## Step 10: Clean Up
 
 Complete the release:
 
@@ -314,24 +445,33 @@ export VERSION="1.0.0"
 # Get previous version for change summary
 PREV_VERSION=$(git tag -l | tail -1)
 
-# 1. Validation
+# 1. Pre-release review (see Step 1 for details)
+rg -i "TODO|FIXME|XXX" --type go  # Should be empty or acceptable
+
+# 2. Validation
+go test -v ./...
+golangci-lint run
 git status  # Should be clean
 
-# 2. Create tag with summary
-git log ${PREV_VERSION}..HEAD --oneline  # Review changes
+# 3. Update CHANGELOG.md manually, then commit
+git add CHANGELOG.md
+git commit -m "chore: prepare for v${VERSION} release"
+git push origin main
+
+# 4. Create tag with summary
 SUMMARY="Your summary here"
 git tag -a "v${VERSION}" -m "Release v${VERSION} - ${SUMMARY}"
 git push origin "v${VERSION}"
 
-# 3. Create GitHub Release
+# 5. Create GitHub Release
 gh release create "v${VERSION}" --title "Release v${VERSION}" \
-  --notes "$(git log ${PREV_VERSION}..v${VERSION} --pretty=format:'- %s')"
+  --notes "$(git log ${PREV_VERSION}..v${VERSION} --pretty=format:'- %s' 2>/dev/null || git log --pretty=format:'- %s' | head -20)"
 
-# 4. Get tarball SHA256
+# 6. Get tarball SHA256 (macOS)
 TARBALL_SHA256=$(curl -sL "https://github.com/grantcarthew/acon/archive/refs/tags/v${VERSION}.tar.gz" | shasum -a 256 | cut -d' ' -f1)
 echo "SHA256: $TARBALL_SHA256"
 
-# 5. Update Homebrew (edit Formula/acon.rb with VERSION and SHA256)
+# 7. Update Homebrew (edit Formula/acon.rb with VERSION and SHA256)
 cd ~/Projects/homebrew-tap
 # Edit Formula/acon.rb
 git add Formula/acon.rb
@@ -339,7 +479,7 @@ git commit -m "acon: update to ${VERSION}"
 git push origin main
 cd -
 
-# 6. Test
+# 8. Test
 brew update && brew reinstall grantcarthew/tap/acon
 acon --version
 ```
@@ -347,6 +487,12 @@ acon --version
 ---
 
 ## Troubleshooting
+
+**Tests failing**
+
+- Run: `go test -v ./...` to see detailed output
+- Fix all failures before proceeding
+- Never release with failing tests
 
 **Tarball not available**
 
@@ -370,8 +516,10 @@ acon --version
 
 ## Related Documents
 
+- `AGENTS.md` - Repository context for AI agents
+- `CHANGELOG.md` - Version history
 - `README.md` - User-facing documentation
-- `docs/code-review.md` - Code review checklist
+- `docs/tasks/code-review.md` - Code review checklist
 
 ---
 

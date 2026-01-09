@@ -493,6 +493,153 @@ echo "test"
 	}
 }
 
+func TestStorageToMarkdown_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		wantErr  bool
+	}{
+		{
+			name:     "unclosed heading tag",
+			input:    "<h1>Unclosed heading",
+			contains: []string{"Unclosed heading"},
+			wantErr:  false,
+		},
+		{
+			name:     "unclosed paragraph",
+			input:    "<p>Paragraph without closing",
+			contains: []string{"Paragraph without closing"},
+			wantErr:  false,
+		},
+		{
+			name:     "mismatched tags",
+			input:    "<h1>Title</h2>",
+			contains: []string{"Title"},
+			wantErr:  false,
+		},
+		{
+			name:     "empty CDATA in code block",
+			input:    `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[]]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"```"},
+			wantErr:  false,
+		},
+		{
+			name:     "deeply nested lists (10 levels)",
+			input:    "<ul><li>L1<ul><li>L2<ul><li>L3<ul><li>L4<ul><li>L5<ul><li>L6<ul><li>L7<ul><li>L8<ul><li>L9<ul><li>L10</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
+			contains: []string{"L1", "L10"},
+			wantErr:  false,
+		},
+		{
+			name:     "mixed valid and invalid HTML",
+			input:    "<p>Valid paragraph</p><invalid>Unknown tag</invalid><p>Another valid</p>",
+			contains: []string{"Valid paragraph", "Another valid"},
+			wantErr:  false,
+		},
+		{
+			name:     "HTML comments",
+			input:    "<p>Before</p><!-- This is a comment --><p>After</p>",
+			contains: []string{"Before", "After"},
+			wantErr:  false,
+		},
+		{
+			name:     "self-closing tags",
+			input:    "<p>Line one<br/>Line two</p>",
+			contains: []string{"Line one", "Line two"},
+			wantErr:  false,
+		},
+		{
+			name:     "unicode content",
+			input:    "<p>日本語テキスト with emoji 🚀🎉 and symbols ™©®</p>",
+			contains: []string{"日本語テキスト", "🚀🎉", "™©®"},
+			wantErr:  false,
+		},
+		{
+			name:     "whitespace only content",
+			input:    "<p>   \n\t   </p>",
+			contains: []string{},
+			wantErr:  false,
+		},
+		{
+			name:     "nested formatting deeply",
+			input:    "<p><strong><em><code>deeply nested</code></em></strong></p>",
+			contains: []string{"deeply nested"},
+			wantErr:  false,
+		},
+		{
+			name:     "table with empty cells",
+			input:    "<table><thead><tr><th>A</th><th></th><th>C</th></tr></thead><tbody><tr><td></td><td>B</td><td></td></tr></tbody></table>",
+			contains: []string{"| A |", "| C |", "| B |"},
+			wantErr:  false,
+		},
+		{
+			name:     "multiple sequential headings",
+			input:    "<h1>One</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6>",
+			contains: []string{"# One", "## Two", "### Three", "#### Four", "##### Five", "###### Six"},
+			wantErr:  false,
+		},
+		{
+			name:     "special XML characters in attributes",
+			input:    `<a href="https://example.com?a=1&amp;b=2">Link</a>`,
+			contains: []string{"[Link]", "example.com"},
+			wantErr:  false,
+		},
+		{
+			name:     "script tags stripped",
+			input:    "<p>Before</p><script>alert('xss')</script><p>After</p>",
+			contains: []string{"Before", "After"},
+			wantErr:  false,
+		},
+		{
+			name:     "style tags stripped",
+			input:    "<p>Content</p><style>body { color: red; }</style>",
+			contains: []string{"Content"},
+			wantErr:  false,
+		},
+		{
+			name:     "CDATA with special characters",
+			input:    `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[<>&"']]></ac:plain-text-body></ac:structured-macro>`,
+			contains: []string{"<>&"},
+			wantErr:  false,
+		},
+		{
+			name:     "empty document",
+			input:    "",
+			contains: []string{},
+			wantErr:  false,
+		},
+		{
+			name:     "only whitespace",
+			input:    "   \n\t\n   ",
+			contains: []string{},
+			wantErr:  false,
+		},
+		{
+			name:     "plain text without HTML",
+			input:    "Just plain text without any HTML tags",
+			contains: []string{"Just plain text without any HTML tags"},
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := StorageToMarkdown(tt.input)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("StorageToMarkdown() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf("StorageToMarkdown() missing %q\nGot: %q", want, result)
+				}
+			}
+		})
+	}
+}
+
 func TestRoundTrip_ComprehensiveFile(t *testing.T) {
 	// Read the comprehensive test markdown file
 	mdContent, err := os.ReadFile("../../testdata/comprehensive-test.md")
@@ -527,5 +674,114 @@ func TestRoundTrip_ComprehensiveFile(t *testing.T) {
 		if !strings.Contains(result, identifier) {
 			t.Errorf("Missing identifier %q in output", identifier)
 		}
+	}
+}
+
+// Benchmark tests for performance tracking
+
+var benchmarkMarkdown = `# Benchmark Document
+
+This is a paragraph with **bold**, *italic*, and ` + "`code`" + ` formatting.
+
+## Section One
+
+- Item one with some text
+- Item two with more text
+- Item three with even more text
+
+### Subsection
+
+1. First ordered item
+2. Second ordered item
+3. Third ordered item
+
+## Code Example
+
+Here is some inline ` + "`code`" + ` and a code block:
+
+` + "```go" + `
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, World!")
+}
+` + "```" + `
+
+## Table
+
+| Column A | Column B | Column C |
+|----------|----------|----------|
+| Value 1  | Value 2  | Value 3  |
+| Value 4  | Value 5  | Value 6  |
+
+## Links and Images
+
+Visit [Google](https://google.com) for more information.
+
+> This is a blockquote with some important information.
+
+The end.
+`
+
+var benchmarkStorage = `<h1>Benchmark Document</h1>
+<p>This is a paragraph with <strong>bold</strong>, <em>italic</em>, and <code>code</code> formatting.</p>
+<h2>Section One</h2>
+<ul>
+<li>Item one with some text</li>
+<li>Item two with more text</li>
+<li>Item three with even more text</li>
+</ul>
+<h3>Subsection</h3>
+<ol>
+<li>First ordered item</li>
+<li>Second ordered item</li>
+<li>Third ordered item</li>
+</ol>
+<h2>Code Example</h2>
+<p>Here is some inline <code>code</code> and a code block:</p>
+<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, World!")
+}
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Table</h2>
+<table><thead><tr><th>Column A</th><th>Column B</th><th>Column C</th></tr></thead><tbody><tr><td>Value 1</td><td>Value 2</td><td>Value 3</td></tr><tr><td>Value 4</td><td>Value 5</td><td>Value 6</td></tr></tbody></table>
+<h2>Links and Images</h2>
+<p>Visit <a href="https://google.com">Google</a> for more information.</p>
+<blockquote><p>This is a blockquote with some important information.</p></blockquote>
+<p>The end.</p>`
+
+func BenchmarkMarkdownToStorage(b *testing.B) {
+	for b.Loop() {
+		MarkdownToStorage(benchmarkMarkdown)
+	}
+}
+
+func BenchmarkStorageToMarkdown(b *testing.B) {
+	for b.Loop() {
+		StorageToMarkdown(benchmarkStorage)
+	}
+}
+
+func BenchmarkMarkdownToStorage_Large(b *testing.B) {
+	// Create a larger document by repeating the benchmark content
+	large := strings.Repeat(benchmarkMarkdown, 10)
+	b.ResetTimer()
+	for b.Loop() {
+		MarkdownToStorage(large)
+	}
+}
+
+func BenchmarkStorageToMarkdown_Large(b *testing.B) {
+	// Create a larger document by repeating the benchmark content
+	large := strings.Repeat(benchmarkStorage, 10)
+	b.ResetTimer()
+	for b.Loop() {
+		StorageToMarkdown(large)
 	}
 }

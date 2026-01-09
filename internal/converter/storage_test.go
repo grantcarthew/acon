@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -323,5 +324,208 @@ func main() {
 				}
 			}
 		})
+	}
+}
+
+func TestStorageToMarkdown_IntraWordUnderscores(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		excludes []string
+	}{
+		{
+			name:     "simple intra-word underscore",
+			input:    "<p>my_variable_name</p>",
+			contains: []string{"my_variable_name"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "multiple underscores in identifier",
+			input:    "<p>user_account_settings_config</p>",
+			contains: []string{"user_account_settings_config"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "underscore in table cell",
+			input:    "<table><tbody><tr><td>database_pool</td><td>config</td></tr></tbody></table>",
+			contains: []string{"database_pool"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "mixed content with underscores",
+			input:    "<p>The module name is api_handler in the services directory.</p>",
+			contains: []string{"api_handler"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "underscore at word boundary preserved",
+			input:    "<p><em>italic</em> and word_</p>",
+			contains: []string{"*italic*", "word_"},
+		},
+		{
+			name:     "code span with underscores not affected",
+			input:    "<p>Use <code>my_variable_name</code> for this</p>",
+			contains: []string{"`my_variable_name`"},
+		},
+		{
+			name:     "consecutive underscores in identifier",
+			input:    "<p>a_b_c_d_e</p>",
+			contains: []string{"a_b_c_d_e"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "underscores with numbers",
+			input:    "<p>config_v2_test_123</p>",
+			contains: []string{"config_v2_test_123"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "snake_case in heading",
+			input:    "<h2>The database_connection Module</h2>",
+			contains: []string{"## The database_connection Module"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "snake_case in link text",
+			input:    `<p><a href="https://example.com">my_function_name</a></p>`,
+			contains: []string{"[my_function_name]"},
+			excludes: []string{`\_`},
+		},
+		{
+			name:     "snake_case in list item with newline",
+			input:    "<ul>\n<li>my_variable_name\n</li>\n<li>user_account_settings\n</li>\n</ul>",
+			contains: []string{"my_variable_name", "user_account_settings"},
+			excludes: []string{`\_`},
+		},
+		{
+			name: "snake_case after multiple code blocks",
+			input: `<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[func first() {}]]></ac:plain-text-body></ac:structured-macro>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">python</ac:parameter><ac:plain-text-body><![CDATA[def second(): pass]]></ac:plain-text-body></ac:structured-macro>
+<h2>Snake Case</h2>
+<ul>
+<li>my_variable_name
+</li>
+</ul>`,
+			contains: []string{"```go", "```python", "my_variable_name"},
+			excludes: []string{`my\_variable`},
+		},
+		{
+			name: "snake_case after many code blocks with various content",
+			input: `<h2>Code 1</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[package main
+func first() {}
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Code 2</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">python</ac:parameter><ac:plain-text-body><![CDATA[def second():
+    pass
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Code 3</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">javascript</ac:parameter><ac:plain-text-body><![CDATA[const third = () => {};
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Code 4</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">bash</ac:parameter><ac:plain-text-body><![CDATA[#!/bin/bash
+echo "test"
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Code 5</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[func fifth() {}
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Snake Case Section</h2>
+<p>Text with my_variable_name here.</p>
+<ul>
+<li>api_handler
+</li>
+<li>config_manager
+</li>
+</ul>`,
+			contains: []string{"```go", "```python", "my_variable_name", "api_handler", "config_manager"},
+			excludes: []string{`\_`},
+		},
+		{
+			name: "snake_case after code blocks including empty ones",
+			input: `<h2>Normal Code</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[func test() {}
+]]></ac:plain-text-body></ac:structured-macro>
+<h2>Empty Code Block</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">none</ac:parameter></ac:structured-macro>
+<h2>Another Empty</h2>
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">none</ac:parameter></ac:structured-macro>
+<h2>Snake Case</h2>
+<ul>
+<li>my_variable_name
+</li>
+</ul>`,
+			contains: []string{"my_variable_name"},
+			excludes: []string{`\_`},
+		},
+		{
+			name: "snake_case after code block containing nested backticks",
+			input: "<h2>Code with nested backticks</h2>\n" +
+				"<ac:structured-macro ac:name=\"code\" ac:schema-version=\"1\"><ac:parameter ac:name=\"language\">md</ac:parameter><ac:plain-text-body><![CDATA[```python\nprint('nested')\n```\n]]></ac:plain-text-body></ac:structured-macro>\n" +
+				"<h2>More code</h2>\n" +
+				"<ac:structured-macro ac:name=\"code\" ac:schema-version=\"1\"><ac:parameter ac:name=\"language\">go</ac:parameter><ac:plain-text-body><![CDATA[func test() {}\n]]></ac:plain-text-body></ac:structured-macro>\n" +
+				"<h2>Snake Case</h2>\n" +
+				"<ul>\n<li>my_variable_name\n</li>\n</ul>",
+			contains: []string{"my_variable_name"},
+			excludes: []string{`my\_variable`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := StorageToMarkdown(tt.input)
+			if err != nil {
+				t.Fatalf("StorageToMarkdown() error = %v", err)
+			}
+
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf("output missing expected content %q\nGot:\n%s", want, result)
+				}
+			}
+
+			for _, exclude := range tt.excludes {
+				if strings.Contains(result, exclude) {
+					t.Errorf("output contains unexpected escaped underscore %q\nGot:\n%s", exclude, result)
+				}
+			}
+		})
+	}
+}
+
+func TestRoundTrip_ComprehensiveFile(t *testing.T) {
+	// Read the comprehensive test markdown file
+	mdContent, err := os.ReadFile("../../testdata/comprehensive-test.md")
+	if err != nil {
+		t.Skipf("Skipping: cannot read comprehensive-test.md: %v", err)
+	}
+
+	// Convert Markdown -> Storage
+	storage := MarkdownToStorage(string(mdContent))
+
+	// Convert Storage -> Markdown
+	result, err := StorageToMarkdown(storage)
+	if err != nil {
+		t.Fatalf("StorageToMarkdown() error = %v", err)
+	}
+
+	// Check that snake_case identifiers are not escaped
+	snakeCaseTests := []string{
+		"my_variable_name",
+		"user_account_settings",
+		"database_connection_pool",
+		"api_handler",
+		"config_manager",
+		"data_processor",
+	}
+
+	for _, identifier := range snakeCaseTests {
+		escaped := strings.ReplaceAll(identifier, "_", `\_`)
+		if strings.Contains(result, escaped) {
+			t.Errorf("Found escaped underscore in %q - should be %q", escaped, identifier)
+		}
+		if !strings.Contains(result, identifier) {
+			t.Errorf("Missing identifier %q in output", identifier)
+		}
 	}
 }

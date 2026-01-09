@@ -376,6 +376,28 @@ Mathematical: 2 × 3 = 6, π ≈ 3.14159, ∞ infinity
 
 Arrows: → ← ↑ ↓ ↔ ⇒ ⇐
 
+## Snake Case Identifiers
+
+Intra-word underscores should not be escaped in the output.
+
+### Simple Identifiers
+
+- my_variable_name
+- user_account_settings
+- database_connection_pool
+
+### In Tables
+
+| Module Name | Directory | Status |
+|-------------|-----------|--------|
+| api_handler | services | active |
+| config_manager | utils | active |
+| data_processor | core | active |
+
+### In Sentences
+
+The module database_connection is located in the utils directory. Use config_v2_test_123 for testing.
+
 ## Edge Cases
 
 ### Escaped Characters

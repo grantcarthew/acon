@@ -22,16 +22,17 @@ var storageConverter = converter.NewConverter(
 )
 
 // codeMacroRegex matches Confluence code macro WITH content
+// Uses \s* for explicit whitespace handling between elements
 var codeMacroRegex = regexp.MustCompile(
-	`<ac:structured-macro[^>]*ac:name="code"[^>]*>` +
-		`([^<]*(?:<ac:parameter[^>]*>[^<]*</ac:parameter>[^<]*)*)` + // capture parameters only (no nested macros)
-		`<ac:plain-text-body><!\[CDATA\[([\s\S]*?)\]\]></ac:plain-text-body>` +
+	`<ac:structured-macro[^>]*ac:name="code"[^>]*>\s*` +
+		`((?:<ac:parameter[^>]*>[^<]*</ac:parameter>\s*)*)` + // capture parameters with trailing whitespace
+		`<ac:plain-text-body><!\[CDATA\[([\s\S]*?)\]\]></ac:plain-text-body>\s*` +
 		`</ac:structured-macro>`)
 
 // emptyCodeMacroRegex matches Confluence code macro WITHOUT content (empty code block)
 var emptyCodeMacroRegex = regexp.MustCompile(
-	`<ac:structured-macro[^>]*ac:name="code"[^>]*>` +
-		`([^<]*(?:<ac:parameter[^>]*>[^<]*</ac:parameter>[^<]*)*)` + // capture parameters only
+	`<ac:structured-macro[^>]*ac:name="code"[^>]*>\s*` +
+		`((?:<ac:parameter[^>]*>[^<]*</ac:parameter>\s*)*)` + // capture parameters with trailing whitespace
 		`</ac:structured-macro>`)
 
 // languageRegex extracts language value from parameters
@@ -162,6 +163,12 @@ func StorageToMarkdown(storage string) (string, error) {
 	// Pattern 2: \\X -> \X (double backslash: only backslash was escaped, char is literal)
 	markdown = fixOverEscaping(markdown)
 
+	// Fix intra-word underscores globally (safe even in code blocks since pattern is specific)
+	// The pattern alphanumeric\_alphanumeric never needs escaping in Markdown
+	for intraWordUnderscoreRegex.MatchString(markdown) {
+		markdown = intraWordUnderscoreRegex.ReplaceAllString(markdown, "${1}_${2}")
+	}
+
 	// Fix extra blank lines in nested lists
 	// The html-to-markdown library creates "loose" lists with blank lines before nested items
 	markdown = fixNestedListSpacing(markdown)
@@ -182,7 +189,8 @@ func fixNestedListSpacing(markdown string) string {
 
 // codeBlockRegex matches fenced code blocks to protect their content
 // Matches ``` followed by optional language, newline, content, and closing ```
-var codeBlockRegex = regexp.MustCompile("(?s)```[a-zA-Z]*\\n.*?\\n```")
+// The closing ``` may be prefixed with > for blockquote code blocks
+var codeBlockRegex = regexp.MustCompile("(?s)```[a-zA-Z]*\\n.*?\\n>? ?```")
 
 // fixOverEscaping removes redundant backslash escapes added by html-to-markdown
 // but preserves content inside code blocks
@@ -219,6 +227,10 @@ func fixOverEscaping(markdown string) string {
 
 	return result.String()
 }
+
+// intraWordUnderscoreRegex matches escaped underscores between alphanumeric chars
+// These never create emphasis and don't need escaping
+var intraWordUnderscoreRegex = regexp.MustCompile(`([a-zA-Z0-9])\\_([a-zA-Z0-9])`)
 
 // fixEscapesInText removes redundant backslash escapes from non-code text
 func fixEscapesInText(text string) string {

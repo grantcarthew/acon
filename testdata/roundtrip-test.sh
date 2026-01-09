@@ -175,6 +175,20 @@ check_feature_warn() {
     fi
 }
 
+check_feature_absent() {
+    local name="$1"
+    local pattern="$2"
+    local file="$RETRIEVED_FILE"
+
+    if grep -qE "$pattern" "$file"; then
+        log_error "$name - unwanted pattern found: $pattern"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+        log_success "$name"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    fi
+}
+
 # Text formatting
 log_info "Checking text formatting..."
 check_feature "Bold text" "\*\*bold text\*\*"
@@ -232,6 +246,12 @@ check_feature "Emoji" "🚀"
 log_info "Checking special characters..."
 check_feature "Ampersand" "Ampersands &"
 check_feature "Angle brackets" "< >"
+
+# Snake case identifiers (underscores should not be escaped)
+log_info "Checking snake_case identifiers..."
+check_feature "Snake case in list" "my_variable_name"
+check_feature "Snake case in table" "api_handler"
+check_feature_absent "No escaped underscores" 'my\\_variable'
 
 # Cleanup temp files
 rm -rf "$TEMP_DIR"

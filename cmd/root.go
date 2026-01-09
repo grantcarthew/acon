@@ -28,7 +28,9 @@ Optional Environment Variables:
   CONFLUENCE_SPACE_KEY      Default space key (can be overridden with -s flag)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
-			fmt.Println(appVersion)
+			fmt.Printf("acon version %s\n", appVersion)
+			fmt.Println("Repository: https://github.com/grantcarthew/acon")
+			fmt.Println("Report issues: https://github.com/grantcarthew/acon/issues/new")
 			return
 		}
 		cmd.Help()

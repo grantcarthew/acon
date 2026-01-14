@@ -519,7 +519,7 @@ acon --version
 - `AGENTS.md` - Repository context for AI agents
 - `CHANGELOG.md` - Version history
 - `README.md` - User-facing documentation
-- `docs/tasks/code-review.md` - Code review checklist
+- `.ai/tasks/code-review.md` - Code review checklist
 
 ---
 

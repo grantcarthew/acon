@@ -99,9 +99,11 @@ acon/
 │   └── converter/          # Bidirectional Markdown conversion
 │       ├── markdown.go     # Markdown → Confluence storage
 │       └── storage.go      # Confluence storage → Markdown
-├── docs/tasks/             # Process documentation
-│   ├── code-review.md
-│   └── release-process.md
+├── .ai/                    # AI agent working files (DDD)
+│   ├── projects/           # Project documents
+│   ├── design/             # Design records
+│   └── tasks/              # Task documentation
+├── docs/                   # Human-facing documentation
 ├── testdata/               # Test fixtures
 │   ├── comprehensive-test.md
 │   ├── roundtrip-test.sh
@@ -313,7 +315,7 @@ go build -o acon
 
 ## Release Process
 
-See `docs/tasks/release-process.md` for the complete release workflow including:
+See `.ai/tasks/release-process.md` for the complete release workflow including:
 
 1. Pre-release validation
 2. Version tagging
@@ -327,5 +329,5 @@ See `docs/tasks/release-process.md` for the complete release workflow including:
 - [Cobra CLI Framework](https://github.com/spf13/cobra)
 - [Goldmark Markdown Parser](https://github.com/yuin/goldmark)
 - [html-to-Markdown](https://github.com/JohannesKaufmann/html-to-markdown)
-- Code review checklist: `docs/tasks/code-review.md`
+- Code review checklist: `.ai/tasks/code-review.md`
 - Feature support matrix: `testdata/README.md`

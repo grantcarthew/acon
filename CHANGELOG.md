@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0](https://github.com/grantcarthew/acon/compare/v1.2.0...v1.3.0) - 2026-01-21
+
+### Added
+
+- Repository and issue links displayed in version output
+
+### Fixed
+
+- Space key now required for `page create` and `page list` commands
+- Prevented escaping of intra-word underscores in Markdown output
+
 ## [1.2.0](https://github.com/grantcarthew/acon/compare/v1.1.0...v1.2.0) - 2025-12-05
 
 ### Added

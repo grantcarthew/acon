@@ -106,6 +106,112 @@ func TestLoad(t *testing.T) {
 				SpaceKey: "",
 			},
 		},
+		{
+			name: "ATLASSIAN_BASE_URL fallback appends /wiki",
+			env: map[string]string{
+				"ATLASSIAN_BASE_URL":   "https://example.atlassian.net",
+				"CONFLUENCE_EMAIL":     "user@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net/wiki",
+				Email:    "user@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "ATLASSIAN_BASE_URL with trailing slash",
+			env: map[string]string{
+				"ATLASSIAN_BASE_URL":   "https://example.atlassian.net/",
+				"CONFLUENCE_EMAIL":     "user@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net/wiki",
+				Email:    "user@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "ATLASSIAN_BASE_URL already contains /wiki",
+			env: map[string]string{
+				"ATLASSIAN_BASE_URL":   "https://example.atlassian.net/wiki",
+				"CONFLUENCE_EMAIL":     "user@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net/wiki",
+				Email:    "user@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "ATLASSIAN_BASE_URL with /wiki and trailing slash",
+			env: map[string]string{
+				"ATLASSIAN_BASE_URL":   "https://example.atlassian.net/wiki/",
+				"CONFLUENCE_EMAIL":     "user@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net/wiki",
+				Email:    "user@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "CONFLUENCE_BASE_URL takes priority over ATLASSIAN_BASE_URL",
+			env: map[string]string{
+				"CONFLUENCE_BASE_URL":  "https://confluence.example.com",
+				"ATLASSIAN_BASE_URL":   "https://atlassian.example.com",
+				"CONFLUENCE_EMAIL":     "user@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://confluence.example.com",
+				Email:    "user@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "ATLASSIAN_EMAIL fallback",
+			env: map[string]string{
+				"CONFLUENCE_BASE_URL":  "https://example.atlassian.net",
+				"ATLASSIAN_EMAIL":      "atlassian@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net",
+				Email:    "atlassian@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "CONFLUENCE_EMAIL takes priority over ATLASSIAN_EMAIL",
+			env: map[string]string{
+				"CONFLUENCE_BASE_URL":  "https://example.atlassian.net",
+				"CONFLUENCE_EMAIL":     "confluence@example.com",
+				"ATLASSIAN_EMAIL":      "atlassian@example.com",
+				"CONFLUENCE_API_TOKEN": "token123",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net",
+				Email:    "confluence@example.com",
+				APIToken: "token123",
+			},
+		},
+		{
+			name: "all ATLASSIAN_* fallbacks together",
+			env: map[string]string{
+				"ATLASSIAN_BASE_URL":  "https://example.atlassian.net",
+				"ATLASSIAN_EMAIL":     "atlassian@example.com",
+				"ATLASSIAN_API_TOKEN": "atlassian-token",
+			},
+			wantCfg: Config{
+				BaseURL:  "https://example.atlassian.net/wiki",
+				Email:    "atlassian@example.com",
+				APIToken: "atlassian-token",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -115,6 +221,8 @@ func TestLoad(t *testing.T) {
 				"CONFLUENCE_BASE_URL",
 				"CONFLUENCE_EMAIL",
 				"CONFLUENCE_API_TOKEN",
+				"ATLASSIAN_BASE_URL",
+				"ATLASSIAN_EMAIL",
 				"ATLASSIAN_API_TOKEN",
 				"JIRA_API_TOKEN",
 				"CONFLUENCE_SPACE_KEY",

@@ -19,13 +19,14 @@ var rootCmd = &cobra.Command{
 	Short: "Atlassian Confluence CLI",
 	Long: `A command line interface for Atlassian Confluence
 
-Required Environment Variables:
-  CONFLUENCE_BASE_URL       Confluence instance URL
-  CONFLUENCE_EMAIL          Your email address
-  CONFLUENCE_API_TOKEN      API token (or ATLASSIAN_API_TOKEN/JIRA_API_TOKEN)
-
-Optional Environment Variables:
-  CONFLUENCE_SPACE_KEY      Default space key (can be overridden with -s flag)`,
+Environment Variables:
+  ATLASSIAN_BASE_URL        Atlassian instance URL (shared with ajira, /wiki appended)
+  ATLASSIAN_EMAIL           User email (shared with ajira)
+  ATLASSIAN_API_TOKEN       API token (shared with ajira)
+  CONFLUENCE_BASE_URL       Confluence URL (overrides ATLASSIAN_BASE_URL)
+  CONFLUENCE_EMAIL          User email (overrides ATLASSIAN_EMAIL)
+  CONFLUENCE_API_TOKEN      API token (overrides ATLASSIAN_API_TOKEN)
+  CONFLUENCE_SPACE_KEY      Default space key (optional)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
 			fmt.Printf("acon version %s\n", appVersion)

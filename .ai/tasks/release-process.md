@@ -2,7 +2,7 @@
 
 > **Purpose**: Repeatable process for releasing new versions of acon
 > **Audience**: AI agents and maintainers performing releases
-> **Last Updated**: 2026-01-09
+> **Last Updated**: 2026-01-20
 
 This document provides step-by-step instructions for releasing acon. Execute each step in order.
 
@@ -96,7 +96,9 @@ gofmt -l .
 # Run linters
 go vet ./...
 golangci-lint run
+staticcheck ./...
 ineffassign ./...
+govulncheck ./...
 
 # Check cyclomatic complexity (functions over 15)
 gocyclo -over 15 .
@@ -118,7 +120,9 @@ git status
 - `gofmt -l .` produces no output (all files formatted)
 - `go vet ./...` reports no issues
 - `golangci-lint run` reports no errors (warnings acceptable)
+- `staticcheck ./...` reports no issues
 - `ineffassign ./...` reports no issues
+- `govulncheck ./...` reports no vulnerabilities
 - `gocyclo -over 15 .` reports no functions (or acceptable exceptions)
 - All tests pass
 - Build completes without errors
@@ -133,8 +137,10 @@ brew install golangci-lint
 # or: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 # Individual linters
+go install honnef.co/go/tools/cmd/staticcheck@latest
 go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
 go install github.com/gordonklaus/ineffassign@latest
+go install golang.org/x/vuln/cmd/govulncheck@latest
 ```
 
 **If any validation fails, stop and fix issues before proceeding.**
@@ -161,6 +167,8 @@ echo "Releasing version: v${VERSION}"
 ---
 
 ## Step 4: Update CHANGELOG.md
+
+> **Note:** Skip this step for v0.x.x releases. CHANGELOG.md is not maintained during initial development. Start maintaining the changelog from v1.0.0.
 
 Review changes since last release and update CHANGELOG.md:
 
@@ -209,13 +217,21 @@ Example format:
 
 ## Step 5: Commit Changes
 
-Commit the CHANGELOG:
+> **Note:** For v0.x.x releases, skip the CHANGELOG commit but still verify clean state.
+
+Commit the CHANGELOG (if updated):
 
 ```bash
 # Stage and commit changes
 git add CHANGELOG.md
 git commit -m "chore: prepare for v${VERSION} release"
 git push origin main
+```
+
+Verify clean working directory before tagging:
+
+```bash
+git status  # Should show "nothing to commit, working tree clean"
 ```
 
 ---
@@ -451,12 +467,15 @@ rg -i "TODO|FIXME|XXX" --type go  # Should be empty or acceptable
 # 2. Validation
 go test -v ./...
 golangci-lint run
+staticcheck ./...
+govulncheck ./...
 git status  # Should be clean
 
-# 3. Update CHANGELOG.md manually, then commit
-git add CHANGELOG.md
-git commit -m "chore: prepare for v${VERSION} release"
-git push origin main
+# 3. Update CHANGELOG.md (skip for v0.x.x releases)
+# git add CHANGELOG.md
+# git commit -m "chore: prepare for v${VERSION} release"
+# git push origin main
+git status  # Verify clean working directory
 
 # 4. Create tag with summary
 SUMMARY="Your summary here"

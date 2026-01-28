@@ -415,3 +415,51 @@ type errorReader struct {
 func (r *errorReader) Read(p []byte) (n int, err error) {
 	return 0, r.err
 }
+
+func TestPageURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		spaceKey string
+		pageID   string
+		want     string
+	}{
+		{
+			name:     "with space key",
+			baseURL:  "https://example.atlassian.net",
+			spaceKey: "MYSPACE",
+			pageID:   "12345",
+			want:     "https://example.atlassian.net/wiki/spaces/MYSPACE/pages/12345",
+		},
+		{
+			name:     "without space key",
+			baseURL:  "https://example.atlassian.net",
+			spaceKey: "",
+			pageID:   "12345",
+			want:     "https://example.atlassian.net/wiki/pages/12345",
+		},
+		{
+			name:     "different base URL",
+			baseURL:  "https://acme.atlassian.net",
+			spaceKey: "DEV",
+			pageID:   "67890",
+			want:     "https://acme.atlassian.net/wiki/spaces/DEV/pages/67890",
+		},
+		{
+			name:     "long page ID",
+			baseURL:  "https://example.atlassian.net",
+			spaceKey: "DOCS",
+			pageID:   "1234567890123",
+			want:     "https://example.atlassian.net/wiki/spaces/DOCS/pages/1234567890123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PageURL(tt.baseURL, tt.spaceKey, tt.pageID)
+			if got != tt.want {
+				t.Errorf("PageURL(%q, %q, %q) = %q, want %q", tt.baseURL, tt.spaceKey, tt.pageID, got, tt.want)
+			}
+		})
+	}
+}

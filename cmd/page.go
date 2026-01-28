@@ -93,6 +93,16 @@ func mapSpaceSortValue(sort string, desc bool) string {
 	return apiValue
 }
 
+// PageURL returns the browse URL for a Confluence page.
+// If spaceKey is provided, uses the canonical URL format.
+// Otherwise uses a generic format that Confluence redirects.
+func PageURL(baseURL, spaceKey, pageID string) string {
+	if spaceKey != "" {
+		return fmt.Sprintf("%s/wiki/spaces/%s/pages/%s", baseURL, spaceKey, pageID)
+	}
+	return fmt.Sprintf("%s/wiki/pages/%s", baseURL, pageID)
+}
+
 var pageCmd = &cobra.Command{
 	Use:   "page",
 	Short: "Manage Confluence pages",
@@ -151,10 +161,7 @@ var pageCreateCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Printf("Page created successfully\n")
-		fmt.Printf("ID: %s\n", result.ID)
-		fmt.Printf("Title: %s\n", result.Title)
-		fmt.Printf("URL: %s/wiki/spaces/%s/pages/%s\n", cfg.BaseURL, spaceKey, result.ID)
+		fmt.Println(PageURL(cfg.BaseURL, spaceKey, result.ID))
 		return nil
 	},
 }
@@ -180,19 +187,13 @@ var pageViewCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(page)
 		}
-		fmt.Printf("ID: %s\n", page.ID)
-		fmt.Printf("Title: %s\n", page.Title)
-		fmt.Printf("Status: %s\n", page.Status)
-		if page.Version != nil {
-			fmt.Printf("Version: %d\n", page.Version.Number)
-		}
 		if page.Body != nil && page.Body.Storage != nil {
 			markdown, err := converter.StorageToMarkdown(page.Body.Storage.Value)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to convert to markdown: %v\n", err)
-				fmt.Printf("\nContent:\n%s\n", page.Body.Storage.Value)
+				fmt.Println(page.Body.Storage.Value)
 			} else {
-				fmt.Printf("\nContent:\n%s\n", markdown)
+				fmt.Println(markdown)
 			}
 		}
 		return nil
@@ -205,7 +206,7 @@ var pageUpdateCmd = &cobra.Command{
 	Long:  "Update an existing Confluence page",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, _, err := initClient()
+		client, cfg, err := initClient()
 		if err != nil {
 			return err
 		}
@@ -257,12 +258,7 @@ var pageUpdateCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Printf("Page updated successfully\n")
-		fmt.Printf("ID: %s\n", result.ID)
-		fmt.Printf("Title: %s\n", result.Title)
-		if result.Version != nil {
-			fmt.Printf("Version: %d\n", result.Version.Number)
-		}
+		fmt.Println(PageURL(cfg.BaseURL, "", result.ID))
 		return nil
 	},
 }
@@ -351,19 +347,14 @@ var pageListCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(pages)
 		}
-		if pageParent != "" {
-			fmt.Printf("Child pages of %s:\n\n", pageParent)
-		} else {
-			spaceKey := pageSpace
-			if spaceKey == "" {
-				spaceKey = cfg.SpaceKey
-			}
-			fmt.Printf("Pages in space %s:\n\n", spaceKey)
+		spaceKey := pageSpace
+		if spaceKey == "" {
+			spaceKey = cfg.SpaceKey
 		}
 		for _, page := range pages {
-			fmt.Printf("ID: %s\n", page.ID)
 			fmt.Printf("Title: %s\n", page.Title)
 			fmt.Printf("Status: %s\n", page.Status)
+			fmt.Printf("URL: %s\n", PageURL(cfg.BaseURL, spaceKey, page.ID))
 			fmt.Println("---")
 		}
 		return nil
@@ -376,7 +367,7 @@ var pageMoveCmd = &cobra.Command{
 	Long:  "Move a Confluence page to a new parent page within the same space",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, _, err := initClient()
+		client, cfg, err := initClient()
 		if err != nil {
 			return err
 		}
@@ -395,10 +386,7 @@ var pageMoveCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Printf("Page moved successfully\n")
-		fmt.Printf("ID: %s\n", result.ID)
-		fmt.Printf("Title: %s\n", result.Title)
-		fmt.Printf("New Parent ID: %s\n", moveParent)
+		fmt.Println(PageURL(cfg.BaseURL, "", result.ID))
 		return nil
 	},
 }

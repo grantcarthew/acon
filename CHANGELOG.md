@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0](https://github.com/grantcarthew/acon/compare/v1.3.0...v1.4.0) - 2026-01-28
+
+### Changed
+
+- Page commands now output direct Confluence URLs instead of page IDs
+- Improved stdin handling with explicit `-` flag support and better validation
+
 ## [1.3.0](https://github.com/grantcarthew/acon/compare/v1.2.0...v1.3.0) - 2026-01-21
 
 ### Added

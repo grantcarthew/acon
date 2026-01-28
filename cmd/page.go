@@ -29,6 +29,11 @@ var (
 	outputJSON bool
 	updateMsg  string
 	moveParent string
+
+	// stdinReader is the source for stdin input. Override in tests.
+	stdinReader io.Reader = os.Stdin
+	// stdinStat returns stdin file info. Override in tests.
+	stdinStat func() (os.FileInfo, error) = func() (os.FileInfo, error) { return os.Stdin.Stat() }
 )
 
 // mapChildSortValue converts friendly sort names to API values for child pages
@@ -401,7 +406,7 @@ var pageMoveCmd = &cobra.Command{
 func readAndValidateContent(pageFile string) ([]byte, error) {
 	var content []byte
 
-	if pageFile != "" {
+	if pageFile != "" && pageFile != "-" {
 		// Check file size before reading
 		info, err := os.Stat(pageFile)
 		if err != nil {
@@ -416,17 +421,21 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 			return nil, fmt.Errorf("reading file: %w", err)
 		}
 	} else {
-		// Check if stdin is a terminal (no piped input)
-		stat, err := os.Stdin.Stat()
-		if err != nil {
-			return nil, fmt.Errorf("checking stdin: %w", err)
-		}
-		if stat.Mode()&os.ModeCharDevice != 0 {
-			return nil, fmt.Errorf("content required via --file or pipe")
+		// Read from stdin (either no file specified, or "-" explicitly)
+		// Check if stdin is a terminal (no piped input) - skip check if "-" was explicit
+		if pageFile != "-" {
+			stat, err := stdinStat()
+			if err != nil {
+				return nil, fmt.Errorf("checking stdin: %w", err)
+			}
+			if stat.Mode()&os.ModeCharDevice != 0 {
+				return nil, fmt.Errorf("content required via --file or pipe")
+			}
 		}
 
 		// Limit stdin reading
-		limitedReader := io.LimitReader(os.Stdin, maxContentSize+1)
+		limitedReader := io.LimitReader(stdinReader, maxContentSize+1)
+		var err error
 		content, err = io.ReadAll(limitedReader)
 		if err != nil {
 			return nil, fmt.Errorf("reading stdin: %w", err)
@@ -455,7 +464,7 @@ func printJSON(v interface{}) error {
 
 func init() {
 	pageCreateCmd.Flags().StringVarP(&pageTitle, "title", "t", "", "Page title (required)")
-	pageCreateCmd.Flags().StringVarP(&pageFile, "file", "f", "", "Markdown file (use stdin if not specified)")
+	pageCreateCmd.Flags().StringVarP(&pageFile, "file", "f", "", "Markdown file, or - for stdin")
 	pageCreateCmd.Flags().StringVarP(&pageSpace, "space", "s", "", "Space key (uses config default if not specified)")
 	pageCreateCmd.Flags().StringVarP(&pageParent, "parent", "p", "", "Parent page ID")
 	pageCreateCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
@@ -464,7 +473,7 @@ func init() {
 	pageViewCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
 	pageUpdateCmd.Flags().StringVarP(&pageTitle, "title", "t", "", "New page title (optional)")
-	pageUpdateCmd.Flags().StringVarP(&pageFile, "file", "f", "", "Markdown file (use stdin if not specified)")
+	pageUpdateCmd.Flags().StringVarP(&pageFile, "file", "f", "", "Markdown file, or - for stdin")
 	pageUpdateCmd.Flags().StringVarP(&updateMsg, "message", "m", "", "Version update message")
 	pageUpdateCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 

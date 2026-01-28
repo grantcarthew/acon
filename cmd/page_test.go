@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,4 +208,210 @@ func TestMapSpaceSortValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withMockStdin temporarily replaces stdinReader for testing and restores it after.
+func withMockStdin(t *testing.T, content string) {
+	t.Helper()
+	originalReader := stdinReader
+	originalStat := stdinStat
+	t.Cleanup(func() {
+		stdinReader = originalReader
+		stdinStat = originalStat
+	})
+	stdinReader = strings.NewReader(content)
+	// Mock stat to indicate piped input (not a terminal)
+	stdinStat = func() (os.FileInfo, error) {
+		return nil, nil // Won't be called when pageFile is "-"
+	}
+}
+
+func TestReadAndValidateContent_StdinWithDash(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "normal content",
+			input:   "# Hello World\n\nThis is content.",
+			want:    "# Hello World\n\nThis is content.",
+			wantErr: false,
+		},
+		{
+			name:    "content with surrounding whitespace",
+			input:   "\n\n  # Trimmed  \n\n",
+			want:    "# Trimmed",
+			wantErr: false,
+		},
+		{
+			name:    "empty stdin",
+			input:   "",
+			wantErr: true,
+			errMsg:  "content cannot be empty",
+		},
+		{
+			name:    "whitespace only stdin",
+			input:   "   \n\t\n   ",
+			wantErr: true,
+			errMsg:  "content cannot be empty",
+		},
+		{
+			name:    "single character",
+			input:   "x",
+			want:    "x",
+			wantErr: false,
+		},
+		{
+			name:    "markdown with code block",
+			input:   "# Title\n\n```go\nfunc main() {}\n```\n",
+			want:    "# Title\n\n```go\nfunc main() {}\n```",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withMockStdin(t, tt.input)
+
+			result, err := readAndValidateContent("-")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("readAndValidateContent(\"-\") expected error, got nil")
+					return
+				}
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("readAndValidateContent(\"-\") error = %q, want containing %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("readAndValidateContent(\"-\") unexpected error = %v", err)
+				return
+			}
+
+			if string(result) != tt.want {
+				t.Errorf("readAndValidateContent(\"-\") = %q, want %q", string(result), tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAndValidateContent_StdinSizeLimit(t *testing.T) {
+	// Create content just over the limit
+	overLimitContent := strings.Repeat("x", maxContentSize+1)
+
+	originalReader := stdinReader
+	originalStat := stdinStat
+	t.Cleanup(func() {
+		stdinReader = originalReader
+		stdinStat = originalStat
+	})
+	stdinReader = strings.NewReader(overLimitContent)
+	stdinStat = func() (os.FileInfo, error) { return nil, nil }
+
+	_, err := readAndValidateContent("-")
+	if err == nil {
+		t.Error("readAndValidateContent(\"-\") expected error for oversized stdin")
+		return
+	}
+	if !strings.Contains(err.Error(), "stdin too large") {
+		t.Errorf("readAndValidateContent(\"-\") error = %q, want containing 'stdin too large'", err.Error())
+	}
+}
+
+func TestReadAndValidateContent_StdinAtLimit(t *testing.T) {
+	// Create content exactly at the limit
+	atLimitContent := strings.Repeat("x", maxContentSize)
+
+	originalReader := stdinReader
+	originalStat := stdinStat
+	t.Cleanup(func() {
+		stdinReader = originalReader
+		stdinStat = originalStat
+	})
+	stdinReader = strings.NewReader(atLimitContent)
+	stdinStat = func() (os.FileInfo, error) { return nil, nil }
+
+	result, err := readAndValidateContent("-")
+	if err != nil {
+		t.Errorf("readAndValidateContent(\"-\") unexpected error = %v", err)
+		return
+	}
+	if len(result) != maxContentSize {
+		t.Errorf("readAndValidateContent(\"-\") returned %d bytes, want %d", len(result), maxContentSize)
+	}
+}
+
+func TestReadAndValidateContent_DashIsNotFilePath(t *testing.T) {
+	// Ensure that "-" is treated as stdin, not as a file path
+	// Even if a file named "-" exists, we should read from stdin
+	tmpDir := t.TempDir()
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	os.Chdir(tmpDir)
+	t.Cleanup(func() { os.Chdir(originalDir) })
+
+	// Create a file literally named "-"
+	if err := os.WriteFile("-", []byte("file content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Mock stdin with different content
+	originalReader := stdinReader
+	originalStat := stdinStat
+	t.Cleanup(func() {
+		stdinReader = originalReader
+		stdinStat = originalStat
+	})
+	stdinReader = strings.NewReader("stdin content")
+	stdinStat = func() (os.FileInfo, error) { return nil, nil }
+
+	result, err := readAndValidateContent("-")
+	if err != nil {
+		t.Errorf("readAndValidateContent(\"-\") unexpected error = %v", err)
+		return
+	}
+
+	// Should get stdin content, not file content
+	if string(result) != "stdin content" {
+		t.Errorf("readAndValidateContent(\"-\") = %q, want %q (stdin should take precedence over file)", string(result), "stdin content")
+	}
+}
+
+func TestReadAndValidateContent_StdinReadError(t *testing.T) {
+	originalReader := stdinReader
+	originalStat := stdinStat
+	t.Cleanup(func() {
+		stdinReader = originalReader
+		stdinStat = originalStat
+	})
+
+	// Create a reader that returns an error
+	stdinReader = &errorReader{err: io.ErrUnexpectedEOF}
+	stdinStat = func() (os.FileInfo, error) { return nil, nil }
+
+	_, err := readAndValidateContent("-")
+	if err == nil {
+		t.Error("readAndValidateContent(\"-\") expected error for read failure")
+		return
+	}
+	if !strings.Contains(err.Error(), "reading stdin") {
+		t.Errorf("readAndValidateContent(\"-\") error = %q, want containing 'reading stdin'", err.Error())
+	}
+}
+
+// errorReader is an io.Reader that always returns an error.
+type errorReader struct {
+	err error
+}
+
+func (r *errorReader) Read(p []byte) (n int, err error) {
+	return 0, r.err
 }

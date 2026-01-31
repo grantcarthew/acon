@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+# Environment setup
+# -----------------------------------------------------------------------------
+set -o pipefail
+[[ ${DEBUG-} ]] && set -o xtrace
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" || exit 1; pwd)"
+source "${SCRIPT_DIR}/scripts/lib.sh"
+
+function print_usage() {
+  cat <<EOF
+Usage: $(basename "$0")
+
+Controller script to update all reference documentation sources.
+
+This script orchestrates the update of both git repository documentation
+and standalone web-based documentation by executing:
+  1. scripts/refresh-repos  - Updates all git repositories
+  2. scripts/refresh-docs   - Downloads standalone documentation from web sources
+
+Dependencies:
+  scripts/refresh-repos   Script to update git repositories
+  scripts/refresh-docs    Script to download web documentation
+
+Optional arguments:
+  -h, --help             Show this help message and exit
+EOF
+}
+if [[ "${1-}" == "-h" || "${1-}" == "--help" ]]; then
+  print_usage
+  exit 0
+fi
+
+function ctrlc_trap() {
+  log_newline
+  log_warning "Script interrupted. Exiting."
+  exit 130
+}
+trap ctrlc_trap SIGINT
+
+# Title and Dependency Checks
+# -----------------------------------------------------------------------------
+log_title "Update All Reference Documentation"
+
+declare -a required_scripts=("${SCRIPT_DIR}/scripts/refresh-repos" "${SCRIPT_DIR}/scripts/refresh-docs")
+for script in "${required_scripts[@]}"; do
+    if [[ ! -x "${script}" ]]; then
+        log_error "ERROR: Required script not found or not executable: ${script}"
+        exit 1
+    fi
+done
+
+# Main Logic
+# -----------------------------------------------------------------------------
+declare -i total_exit_code=0
+
+log_heading "Step 1: Update Git Repositories"
+log_newline
+
+if "${SCRIPT_DIR}/scripts/refresh-repos"; then
+    log_newline
+    log_success "Git repositories update completed successfully"
+else
+    log_newline
+    log_failure "Git repositories update failed, continuing..."
+    total_exit_code=1
+fi
+
+log_newline
+log_line "=" 80
+log_newline
+
+log_heading "Step 2: Update Standalone Documentation"
+log_newline
+
+if "${SCRIPT_DIR}/scripts/refresh-docs"; then
+    log_newline
+    log_success "Standalone documentation update completed successfully"
+else
+    log_newline
+    log_failure "Standalone documentation update failed"
+    total_exit_code=1
+fi
+
+exit ${total_exit_code}

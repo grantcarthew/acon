@@ -1,0 +1,10 @@
+# Ignore context index.csv (branch-specific)
+/context/index.csv
+
+# Ignore context child directories (branch-specific documentation)
+/context/*/
+
+# Include context tracked subdirectories
+!/context/indexes/
+!/context/scripts/
+!/context/docs/

@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+
+# Environment setup
+# -----------------------------------------------------------------------------
+set -o pipefail
+[[ ${DEBUG-} ]] && set -o xtrace
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" || exit 1; pwd)"
+CONTEXT_DIR="$(dirname "${SCRIPT_DIR}")"
+source "${SCRIPT_DIR}/lib.sh"
+
+function print_usage() {
+  cat <<EOF
+Usage: $(basename "$0")
+
+Clones and updates git repositories defined in repos.csv.
+
+This script reads the repos.csv file from the context directory root and:
+  - Clones repositories that don't exist locally (with --depth 1)
+  - Updates existing repositories (git pull)
+  - Supports sparse checkouts for large repositories
+
+Source Configuration:
+  repos.csv    CSV file with columns: url,directory,sparse_paths,ref
+               ref: optional branch or tag (e.g., main, v2.5.0)
+
+Dependencies:
+  git          Git version control system
+
+Optional arguments:
+  -h, --help   Show this help message and exit
+EOF
+}
+if [[ "${1-}" == "-h" || "${1-}" == "--help" ]]; then
+  print_usage
+  exit 0
+fi
+
+function ctrlc_trap() {
+  log_newline
+  log_warning "Script interrupted. Exiting."
+  exit 130
+}
+trap ctrlc_trap SIGINT
+
+# Title and Dependency Checks
+# -----------------------------------------------------------------------------
+log_title "Update Git Repositories"
+
+if ! command -v git >/dev/null; then
+    log_error "Missing dependency - 'git'"
+    exit 1
+fi
+
+# Check CSV file exists and has content
+CSV_FILE="${CONTEXT_DIR}/repos.csv"
+if [[ ! -f "${CSV_FILE}" ]]; then
+    log_error "Repository list file does not exist: ${CSV_FILE}"
+    exit 1
+fi
+
+# Check if CSV has more than just the header line
+line_count=$(wc -l < "${CSV_FILE}" | tr -d ' ')
+if [[ ${line_count} -lt 2 ]]; then
+    log_warning "No repositories found in ${CSV_FILE} (only header present)"
+    exit 0
+fi
+
+# Main Logic
+# -----------------------------------------------------------------------------
+declare -a cloned=()
+declare -a updated=()
+declare -a failed=()
+declare -a skipped=()
+
+log_heading "Reading Repository List"
+
+# Count repos (excluding header)
+repo_count=$((line_count - 1))
+log_message "Found ${repo_count} repositor$([[ ${repo_count} -eq 1 ]] && echo "y" || echo "ies") in repos.csv"
+log_newline
+
+log_heading "Processing Repositories"
+
+# Read CSV file (skip header)
+while IFS=',' read -r url directory sparse_paths ref; do
+    # Skip empty lines
+    [[ -z "${url}" ]] && continue
+
+    log_subheading "${directory}"
+    log_message "  URL: ${url}"
+    [[ -n "${ref}" ]] && log_message "  Ref: ${ref}"
+
+    repo_path="${CONTEXT_DIR}/${directory}"
+
+    if [[ -d "${repo_path}/.git" ]]; then
+        # Repository exists - update it
+        log_message "  Status: Exists, updating..."
+
+        cd "${repo_path}" || {
+            log_failure "  Failed to enter directory"
+            failed+=("${directory}")
+            continue
+        }
+
+        # Check if this is a sparse checkout
+        is_sparse=false
+        if [[ -f .git/info/sparse-checkout ]] || [[ "$(git config core.sparseCheckout 2>/dev/null)" == "true" ]]; then
+            is_sparse=true
+            log_message "  [sparse checkout]"
+        fi
+
+        # Determine target ref (use specified ref, or current branch, or default branch)
+        if [[ -n "${ref}" ]]; then
+            target_ref="${ref}"
+        else
+            target_ref=$(git branch --show-current)
+            # If detached HEAD and no ref specified, try default branch
+            if [[ -z "${target_ref}" ]]; then
+                target_ref=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+                if [[ -z "${target_ref}" ]]; then
+                    log_warning "  Detached HEAD and no ref specified, skipping"
+                    skipped+=("${directory}")
+                    cd "${CONTEXT_DIR}" || exit 1
+                    continue
+                fi
+                log_message "  Using default branch: ${target_ref}"
+            fi
+        fi
+
+        # Check if target is a tag
+        is_tag=false
+        if git ls-remote --exit-code --tags origin "refs/tags/${target_ref}" >/dev/null 2>&1; then
+            is_tag=true
+        fi
+
+        if [[ "${is_tag}" == "true" ]]; then
+            # Handle tag: fetch and checkout
+            log_message "  [tag]"
+            git fetch --depth=1 origin "refs/tags/${target_ref}:refs/tags/${target_ref}" >/dev/null 2>&1
+            if git checkout "${target_ref}" >/dev/null 2>&1; then
+                log_success "  Checked out tag ${target_ref}"
+                updated+=("${directory}")
+            else
+                log_failure "  Failed to checkout tag"
+                failed+=("${directory}")
+            fi
+        else
+            # Handle branch
+            if ! git ls-remote --exit-code --heads origin "${target_ref}" >/dev/null 2>&1; then
+                log_warning "  Remote branch 'origin/${target_ref}' not found, skipping"
+                skipped+=("${directory}")
+                cd "${CONTEXT_DIR}" || exit 1
+                continue
+            fi
+
+            # Ensure we're on the target branch
+            current_branch=$(git branch --show-current)
+            if [[ "${current_branch}" != "${target_ref}" ]]; then
+                git checkout "${target_ref}" >/dev/null 2>&1 || git checkout -b "${target_ref}" "origin/${target_ref}" >/dev/null 2>&1
+            fi
+
+            # Perform the pull
+            pull_succeeded=false
+            if [[ "${is_sparse}" == "true" ]]; then
+                if git -c advice.diverging=false pull --ff-only >/dev/null 2>&1; then
+                    pull_succeeded=true
+                fi
+            else
+                if git -c advice.diverging=false pull --depth=1 --ff-only >/dev/null 2>&1; then
+                    pull_succeeded=true
+                fi
+            fi
+
+            # If fast-forward failed, reset to remote
+            if [[ "${pull_succeeded}" == "false" ]]; then
+                log_message "  Fast-forward failed, resetting to remote..."
+                git fetch origin "${target_ref}" >/dev/null 2>&1
+                if git reset --hard "origin/${target_ref}" >/dev/null 2>&1; then
+                    log_success "  Reset to remote successfully"
+                    updated+=("${directory}")
+                else
+                    log_failure "  Update failed"
+                    failed+=("${directory}")
+                fi
+            else
+                log_success "  Updated"
+                updated+=("${directory}")
+            fi
+        fi
+
+        cd "${CONTEXT_DIR}" || exit 1
+
+    elif [[ -d "${repo_path}" ]]; then
+        # Directory exists but not a git repo
+        log_warning "  Directory exists but is not a git repository, skipping"
+        skipped+=("${directory}")
+
+    else
+        # Repository doesn't exist - clone it
+        log_message "  Status: New, cloning..."
+
+        clone_succeeded=false
+        if [[ -n "${sparse_paths}" ]]; then
+            # Sparse checkout
+            log_message "  [sparse checkout: ${sparse_paths}]"
+
+            if git clone --filter=blob:none --sparse --depth=1 "${url}" "${repo_path}" >/dev/null 2>&1; then
+                cd "${repo_path}" || {
+                    log_failure "  Failed to enter cloned directory"
+                    failed+=("${directory}")
+                    continue
+                }
+
+                # Set sparse checkout paths (handle semicolon-separated paths)
+                IFS=';' read -ra paths <<< "${sparse_paths}"
+                for path in "${paths[@]}"; do
+                    git sparse-checkout add "${path}" >/dev/null 2>&1
+                done
+
+                clone_succeeded=true
+            else
+                log_failure "  Clone failed"
+                failed+=("${directory}")
+            fi
+        else
+            # Standard shallow clone
+            if git clone --depth=1 "${url}" "${repo_path}" >/dev/null 2>&1; then
+                cd "${repo_path}" || {
+                    log_failure "  Failed to enter cloned directory"
+                    failed+=("${directory}")
+                    continue
+                }
+                clone_succeeded=true
+            else
+                log_failure "  Clone failed"
+                failed+=("${directory}")
+            fi
+        fi
+
+        # Checkout specified ref if provided
+        if [[ "${clone_succeeded}" == "true" ]]; then
+            if [[ -n "${ref}" ]]; then
+                # Fetch and checkout the ref (tag or branch)
+                if git ls-remote --exit-code --tags origin "refs/tags/${ref}" >/dev/null 2>&1; then
+                    git fetch --depth=1 origin "refs/tags/${ref}:refs/tags/${ref}" >/dev/null 2>&1
+                    git checkout "${ref}" >/dev/null 2>&1
+                    log_success "  Cloned (tag: ${ref})"
+                else
+                    git fetch --depth=1 origin "${ref}" >/dev/null 2>&1
+                    git checkout "${ref}" >/dev/null 2>&1
+                    log_success "  Cloned (branch: ${ref})"
+                fi
+            else
+                log_success "  Cloned"
+            fi
+            cloned+=("${directory}")
+            cd "${CONTEXT_DIR}" || exit 1
+        fi
+    fi
+
+done < <(tail -n +2 "${CSV_FILE}")
+
+# Report Summary
+# -----------------------------------------------------------------------------
+log_newline
+log_heading "Summary"
+
+log_message "$(cat <<EOF
+  Total repositories: ${repo_count}
+              Cloned: ${#cloned[@]}
+             Updated: ${#updated[@]}
+              Failed: ${#failed[@]}
+             Skipped: ${#skipped[@]}
+EOF
+)"
+
+if [[ ${#cloned[@]} -gt 0 ]]; then
+    log_newline
+    log_message "Cloned repositories:"
+    for repo in "${cloned[@]}"; do
+        log_success "  ${repo}"
+    done
+fi
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+    log_newline
+    log_warning "Failed repositories:"
+    for repo in "${failed[@]}"; do
+        log_failure "  ${repo}"
+    done
+fi
+
+if [[ ${#skipped[@]} -gt 0 ]]; then
+    log_newline
+    log_message "Skipped repositories:"
+    for repo in "${skipped[@]}"; do
+        log_message "  - ${repo}"
+    done
+fi
+
+log_newline
+if [[ ${#failed[@]} -gt 0 ]]; then
+    log_failure "Completed with failures"
+    exit 1
+else
+    log_done "All repositories processed successfully"
+    exit 0
+fi

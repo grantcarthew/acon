@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+
+# Environment setup
+# -----------------------------------------------------------------------------
+set -o pipefail
+[[ ${DEBUG-} ]] && set -o xtrace
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" || exit 1; pwd)"
+CONTEXT_DIR="$(dirname "${SCRIPT_DIR}")"
+DOCS_DIR="${CONTEXT_DIR}/docs"
+source "${SCRIPT_DIR}/lib.sh"
+
+function print_usage() {
+  cat <<EOF
+Usage: $(basename "$0")
+
+Downloads and updates standalone documentation from web sources.
+
+This script downloads documentation from web sources defined in a CSV file,
+using snag to save them as Markdown files in the docs directory.
+
+Source Configuration:
+  docs.csv    CSV file with columns: url,filename,description
+
+Dependencies:
+  snag               CLI tool for downloading web pages as Markdown
+  curl               Used for URL validation before download
+
+Optional arguments:
+  -h, --help         Show this help message and exit
+EOF
+}
+if [[ "${1-}" == "-h" || "${1-}" == "--help" ]]; then
+  print_usage
+  exit 0
+fi
+
+function ctrlc_trap() {
+  log_newline
+  log_warning "Script interrupted. Exiting."
+  exit 130
+}
+trap ctrlc_trap SIGINT
+
+# Title and Dependency Checks
+# -----------------------------------------------------------------------------
+log_title "Update Standalone Documentation"
+
+dependencies=(snag curl)
+for cmd in "${dependencies[@]}"; do
+    if ! command -v "${cmd}" >/dev/null; then
+        log_error "ERROR: Missing dependency - '${cmd}'"
+        exit 1
+    fi
+done
+
+# Ensure docs directory exists
+if [[ ! -d "${DOCS_DIR}" ]]; then
+    log_error "ERROR: Documentation directory does not exist: ${DOCS_DIR}"
+    exit 1
+fi
+
+# Check CSV file exists and has content
+CSV_FILE="${CONTEXT_DIR}/docs.csv"
+if [[ ! -f "${CSV_FILE}" ]]; then
+    log_error "ERROR: URL list file does not exist: ${CSV_FILE}"
+    exit 1
+fi
+
+# Check if CSV has more than just the header line
+line_count=$(wc -l < "${CSV_FILE}" | tr -d ' ')
+if [[ ${line_count} -lt 2 ]]; then
+    log_warning "No documentation sources found in ${CSV_FILE} (only header present)"
+    exit 0
+fi
+
+# Main Logic
+# -----------------------------------------------------------------------------
+declare -a updated=()
+declare -a failed=()
+declare -a skipped=()
+
+log_heading "Reading Documentation Sources"
+
+# Count sources (excluding header)
+source_count=$((line_count - 1))
+log_message "Found ${source_count} documentation source$([[ ${source_count} -eq 1 ]] && echo "" || echo "s")"
+log_newline
+
+log_heading "Downloading Documentation Sources"
+
+# Read CSV file (skip header)
+tail -n +2 "${CSV_FILE}" | while IFS=',' read -r url filename description; do
+    log_subheading "${description}"
+    log_message "  URL: ${url}"
+    log_message "  Output: ${filename}"
+
+    # Validate URL is reachable
+    log_message "  Validating URL..."
+    if ! curl --head --silent --fail --location --max-time 10 "${url}" >/dev/null 2>&1; then
+        log_failure "  URL validation failed - unreachable or invalid"
+        skipped+=("${description}")
+        log_newline
+        continue
+    fi
+    log_success "  URL validated"
+
+    output_path="${DOCS_DIR}/${filename}"
+
+    # Download the webpage
+    log_message "  Downloading..."
+    download_output=$(snag "${url}" --output "${output_path}" 2>&1)
+    download_exit=$?
+
+    if [[ ${download_exit} -eq 0 ]]; then
+        log_success "  Downloaded successfully"
+        updated+=("${description}")
+    else
+        log_failure "  Download failed"
+        if [[ -n "${download_output}" ]]; then
+            echo "${download_output}" | sed 's/^/    /'
+        fi
+        failed+=("${description}")
+    fi
+
+    log_newline
+done
+
+# Report Summary
+# -----------------------------------------------------------------------------
+log_heading "Update Summary"
+
+log_message "$(cat <<EOF
+  Total sources: ${source_count}
+       Updated: ${#updated[@]}
+        Failed: ${#failed[@]}
+       Skipped: ${#skipped[@]}
+EOF
+)"
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+    log_newline
+    log_warning "Failed sources:"
+    for source in "${failed[@]}"; do
+        log_message "  - ${source}"
+    done
+fi
+
+if [[ ${#skipped[@]} -gt 0 ]]; then
+    log_newline
+    log_message "Skipped sources:"
+    for source in "${skipped[@]}"; do
+        log_message "  - ${source}"
+    done
+fi
+
+log_newline
+if [[ ${#failed[@]} -gt 0 ]]; then
+    log_failure "Update completed with failures"
+    exit 1
+else
+    log_done "All documentation sources updated successfully"
+    exit 0
+fi

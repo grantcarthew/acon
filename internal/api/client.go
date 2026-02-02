@@ -256,91 +256,84 @@ func (c *Client) MovePage(ctx context.Context, pageID, newParentID string) (*Pag
 }
 
 const maxPerPage = 25 // Confluence API v2 max per request
+const maxLimit = 1000 // Protect against memory exhaustion and excessive API calls (40 max requests)
 
-func (c *Client) ListPages(ctx context.Context, spaceID string, limit int, sort string) ([]Page, error) {
-	if strings.TrimSpace(spaceID) == "" {
-		return nil, fmt.Errorf("spaceID cannot be empty")
+// paginatePages handles common pagination logic for page list operations.
+// It validates the limit, fetches pages across multiple API requests if needed,
+// trims results to the exact limit, and returns whether more pages are available.
+func (c *Client) paginatePages(ctx context.Context, initialPath string, limit int, errorContext string) ([]Page, bool, error) {
+	if limit <= 0 {
+		return nil, false, fmt.Errorf("limit must be greater than 0")
+	}
+	if limit > maxLimit {
+		return nil, false, fmt.Errorf("limit cannot exceed %d", maxLimit)
 	}
 
 	var allPages []Page
-	perPage := min(limit, maxPerPage)
-
-	path := fmt.Sprintf("/wiki/api/v2/pages?space-id=%s&limit=%d&body-format=storage", spaceID, perPage)
-	if strings.TrimSpace(sort) != "" {
-		path += fmt.Sprintf("&sort=%s", sort)
-	}
+	hasMore := false
+	path := initialPath
 
 	for {
 		respBody, err := c.doRequest(ctx, "GET", path, nil)
 		if err != nil {
-			return nil, fmt.Errorf("list pages request failed: %w", err)
+			return nil, false, fmt.Errorf("%s request failed: %w", errorContext, err)
 		}
 
 		var result PageListResponse
 		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("failed to parse list pages response: %w", err)
+			return nil, false, fmt.Errorf("failed to parse %s response: %w", errorContext, err)
 		}
 
 		allPages = append(allPages, result.Results...)
 
+		// Check if there are more pages available from the API
+		hasMore = result.Links.Next != ""
+
 		// Stop if we have enough or no more pages
-		if len(allPages) >= limit || result.Links.Next == "" {
+		if len(allPages) >= limit || !hasMore {
 			break
 		}
 
-		// Use the next link for subsequent requests
+		// Use the API-provided next link for subsequent requests
 		path = result.Links.Next
 	}
 
-	// Trim to exact limit
-	if len(allPages) > limit {
+	// Trim to exact limit if we accumulated more than requested
+	trimmed := len(allPages) > limit
+	if trimmed {
 		allPages = allPages[:limit]
 	}
 
-	return allPages, nil
+	// hasMore is true if either the API has more pages OR we trimmed local results
+	hasMore = hasMore || trimmed
+
+	return allPages, hasMore, nil
 }
 
-func (c *Client) GetChildPages(ctx context.Context, parentID string, limit int, sort string) ([]Page, error) {
-	if strings.TrimSpace(parentID) == "" {
-		return nil, fmt.Errorf("parentID cannot be empty")
+func (c *Client) ListPages(ctx context.Context, spaceID string, limit int, sort string) ([]Page, bool, error) {
+	if strings.TrimSpace(spaceID) == "" {
+		return nil, false, fmt.Errorf("spaceID cannot be empty")
 	}
 
-	var allPages []Page
-	perPage := min(limit, maxPerPage)
-
-	path := fmt.Sprintf("/wiki/api/v2/pages/%s/children?limit=%d", parentID, perPage)
+	path := fmt.Sprintf("/wiki/api/v2/pages?space-id=%s&limit=%d&body-format=storage", spaceID, min(limit, maxPerPage))
 	if strings.TrimSpace(sort) != "" {
 		path += fmt.Sprintf("&sort=%s", sort)
 	}
 
-	for {
-		respBody, err := c.doRequest(ctx, "GET", path, nil)
-		if err != nil {
-			return nil, fmt.Errorf("get child pages request failed: %w", err)
-		}
+	return c.paginatePages(ctx, path, limit, "list pages")
+}
 
-		var result PageListResponse
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("failed to parse child pages response: %w", err)
-		}
-
-		allPages = append(allPages, result.Results...)
-
-		// Stop if we have enough or no more pages
-		if len(allPages) >= limit || result.Links.Next == "" {
-			break
-		}
-
-		// Use the next link for subsequent requests
-		path = result.Links.Next
+func (c *Client) GetChildPages(ctx context.Context, parentID string, limit int, sort string) ([]Page, bool, error) {
+	if strings.TrimSpace(parentID) == "" {
+		return nil, false, fmt.Errorf("parentID cannot be empty")
 	}
 
-	// Trim to exact limit
-	if len(allPages) > limit {
-		allPages = allPages[:limit]
+	path := fmt.Sprintf("/wiki/api/v2/pages/%s/children?limit=%d", parentID, min(limit, maxPerPage))
+	if strings.TrimSpace(sort) != "" {
+		path += fmt.Sprintf("&sort=%s", sort)
 	}
 
-	return allPages, nil
+	return c.paginatePages(ctx, path, limit, "get child pages")
 }
 
 func (c *Client) GetSpace(ctx context.Context, spaceKey string) (*Space, error) {

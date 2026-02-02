@@ -296,6 +296,7 @@ var pageListCmd = &cobra.Command{
 		}
 
 		var pages []api.Page
+		var hasMore bool
 
 		if pageParent != "" {
 			// List children of a specific parent page
@@ -304,7 +305,7 @@ var pageListCmd = &cobra.Command{
 				return fmt.Errorf("invalid sort value '%s' (valid: web, title, created, modified, id)", pageSort)
 			}
 			var err error
-			pages, err = client.GetChildPages(cmd.Context(), pageParent, pageLimit, sortValue)
+			pages, hasMore, err = client.GetChildPages(cmd.Context(), pageParent, pageLimit, sortValue)
 			if err != nil {
 				return fmt.Errorf("listing child pages: %w", err)
 			}
@@ -338,7 +339,7 @@ var pageListCmd = &cobra.Command{
 				return fmt.Errorf("getting space: %w", err)
 			}
 
-			pages, err = client.ListPages(cmd.Context(), space.ID, pageLimit, sortValue)
+			pages, hasMore, err = client.ListPages(cmd.Context(), space.ID, pageLimit, sortValue)
 			if err != nil {
 				return fmt.Errorf("listing pages: %w", err)
 			}
@@ -347,6 +348,7 @@ var pageListCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(pages)
 		}
+
 		spaceKey := pageSpace
 		if spaceKey == "" {
 			spaceKey = cfg.SpaceKey
@@ -356,6 +358,17 @@ var pageListCmd = &cobra.Command{
 			fmt.Printf("Status: %s\n", page.Status)
 			fmt.Printf("URL: %s\n", PageURL(cfg.BaseURL, spaceKey, page.ID))
 			fmt.Println("---")
+		}
+
+		// Show pagination summary after results
+		resultWord := "results"
+		if len(pages) == 1 {
+			resultWord = "result"
+		}
+		if hasMore {
+			fmt.Printf("\nShowing %d %s (more available - increase --limit to see more)\n", len(pages), resultWord)
+		} else {
+			fmt.Printf("\nShowing all %d %s\n", len(pages), resultWord)
 		}
 		return nil
 	},

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -515,6 +516,381 @@ func TestClient_MovePage(t *testing.T) {
 	}
 }
 
+func TestClient_ListPages_hasMore(t *testing.T) {
+	tests := []struct {
+		name        string
+		spaceID     string
+		limit       int
+		setupServer func(t *testing.T) http.HandlerFunc
+		wantCount   int
+		wantHasMore bool
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:    "hasMore true when next link present",
+			spaceID: "space-1",
+			limit:   2,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				callCount := 0
+				return func(w http.ResponseWriter, r *http.Request) {
+					callCount++
+					w.Header().Set("Content-Type", "application/json")
+					if callCount == 1 {
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: []Page{
+								{ID: "1", Title: "Page 1"},
+								{ID: "2", Title: "Page 2"},
+							},
+							Links: PaginationLinks{Next: "/wiki/api/v2/pages?cursor=abc"},
+						})
+					} else {
+						// Second call shouldn't happen because limit is reached
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: []Page{{ID: "3", Title: "Page 3"}},
+						})
+					}
+				}
+			},
+			wantCount:   2,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:    "hasMore false when no next link",
+			spaceID: "space-1",
+			limit:   10,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "1", Title: "Page 1"},
+							{ID: "2", Title: "Page 2"},
+						},
+					})
+				}
+			},
+			wantCount:   2,
+			wantHasMore: false,
+			wantErr:     false,
+		},
+		{
+			name:    "hasMore true when results trimmed even without next link",
+			spaceID: "space-1",
+			limit:   2,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "1", Title: "Page 1"},
+							{ID: "2", Title: "Page 2"},
+							{ID: "3", Title: "Page 3"},
+						},
+						// No Next link but we trim from 3 to 2, so hasMore should be true
+					})
+				}
+			},
+			wantCount:   2,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:    "hasMore true when results trimmed and next link present",
+			spaceID: "space-1",
+			limit:   2,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "1", Title: "Page 1"},
+							{ID: "2", Title: "Page 2"},
+							{ID: "3", Title: "Page 3"},
+						},
+						Links: PaginationLinks{Next: "/wiki/api/v2/pages?cursor=xyz"},
+					})
+				}
+			},
+			wantCount:   2,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:    "hasMore false with empty results",
+			spaceID: "space-1",
+			limit:   10,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{},
+					})
+				}
+			},
+			wantCount:   0,
+			wantHasMore: false,
+			wantErr:     false,
+		},
+		{
+			name:    "hasMore false after pagination exhausted",
+			spaceID: "space-1",
+			limit:   50,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				callCount := 0
+				return func(w http.ResponseWriter, r *http.Request) {
+					callCount++
+					w.Header().Set("Content-Type", "application/json")
+
+					if callCount == 1 {
+						pages := make([]Page, 25)
+						for i := range 25 {
+							pages[i] = Page{ID: fmt.Sprintf("page-%d", i+1), Title: "Page"}
+						}
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: pages,
+							Links:   PaginationLinks{Next: "/wiki/api/v2/pages?cursor=abc"},
+						})
+					} else {
+						pages := make([]Page, 20)
+						for i := range 20 {
+							pages[i] = Page{ID: fmt.Sprintf("page-%d", i+26), Title: "Page"}
+						}
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: pages,
+						})
+					}
+				}
+			},
+			wantCount:   45,
+			wantHasMore: false,
+			wantErr:     false,
+		},
+		{
+			name:        "error when limit is zero",
+			spaceID:     "space-1",
+			limit:       0,
+			wantErr:     true,
+			errContains: "limit must be greater than 0",
+		},
+		{
+			name:        "error when limit is negative",
+			spaceID:     "space-1",
+			limit:       -5,
+			wantErr:     true,
+			errContains: "limit must be greater than 0",
+		},
+		{
+			name:        "error when limit exceeds maximum",
+			spaceID:     "space-1",
+			limit:       1001,
+			wantErr:     true,
+			errContains: "limit cannot exceed 1000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var server *httptest.Server
+			if tt.setupServer != nil {
+				server = httptest.NewServer(tt.setupServer(t))
+				defer server.Close()
+			}
+
+			baseURL := "http://localhost"
+			if server != nil {
+				baseURL = server.URL
+			}
+
+			client := NewClient(baseURL, "test@example.com", "token")
+			result, hasMore, err := client.ListPages(context.Background(), tt.spaceID, tt.limit, "")
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ListPages() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("ListPages() error = %q, want containing %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			if !tt.wantErr {
+				if len(result) != tt.wantCount {
+					t.Errorf("ListPages() returned %d pages, want %d", len(result), tt.wantCount)
+				}
+				if hasMore != tt.wantHasMore {
+					t.Errorf("ListPages() hasMore = %v, want %v", hasMore, tt.wantHasMore)
+				}
+			}
+		})
+	}
+}
+
+func TestClient_GetChildPages_hasMore(t *testing.T) {
+	tests := []struct {
+		name        string
+		parentID    string
+		limit       int
+		setupServer func(t *testing.T) http.HandlerFunc
+		wantCount   int
+		wantHasMore bool
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "hasMore true when next link present",
+			parentID: "parent-1",
+			limit:    2,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				callCount := 0
+				return func(w http.ResponseWriter, r *http.Request) {
+					callCount++
+					w.Header().Set("Content-Type", "application/json")
+					if callCount == 1 {
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: []Page{
+								{ID: "c1", Title: "Child 1"},
+								{ID: "c2", Title: "Child 2"},
+							},
+							Links: PaginationLinks{Next: "/wiki/api/v2/pages/parent-1/children?cursor=abc"},
+						})
+					} else {
+						// Second call shouldn't happen because limit is reached
+						json.NewEncoder(w).Encode(PageListResponse{
+							Results: []Page{{ID: "c3", Title: "Child 3"}},
+						})
+					}
+				}
+			},
+			wantCount:   2,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:     "hasMore false when no next link",
+			parentID: "parent-1",
+			limit:    10,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "c1", Title: "Child 1"},
+						},
+					})
+				}
+			},
+			wantCount:   1,
+			wantHasMore: false,
+			wantErr:     false,
+		},
+		{
+			name:     "hasMore true when results trimmed even without next link",
+			parentID: "parent-1",
+			limit:    1,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "c1", Title: "Child 1"},
+							{ID: "c2", Title: "Child 2"},
+						},
+						// No Next link but we trim from 2 to 1, so hasMore should be true
+					})
+				}
+			},
+			wantCount:   1,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:     "hasMore true when results trimmed and next link present",
+			parentID: "parent-1",
+			limit:    1,
+			setupServer: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(PageListResponse{
+						Results: []Page{
+							{ID: "c1", Title: "Child 1"},
+							{ID: "c2", Title: "Child 2"},
+						},
+						Links: PaginationLinks{Next: "/wiki/api/v2/pages/parent-1/children?cursor=xyz"},
+					})
+				}
+			},
+			wantCount:   1,
+			wantHasMore: true,
+			wantErr:     false,
+		},
+		{
+			name:        "error when limit is zero",
+			parentID:    "parent-1",
+			limit:       0,
+			wantErr:     true,
+			errContains: "limit must be greater than 0",
+		},
+		{
+			name:        "error when limit is negative",
+			parentID:    "parent-1",
+			limit:       -10,
+			wantErr:     true,
+			errContains: "limit must be greater than 0",
+		},
+		{
+			name:        "error when limit exceeds maximum",
+			parentID:    "parent-1",
+			limit:       1001,
+			wantErr:     true,
+			errContains: "limit cannot exceed 1000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var server *httptest.Server
+			if tt.setupServer != nil {
+				server = httptest.NewServer(tt.setupServer(t))
+				defer server.Close()
+			}
+
+			baseURL := "http://localhost"
+			if server != nil {
+				baseURL = server.URL
+			}
+
+			client := NewClient(baseURL, "test@example.com", "token")
+			result, hasMore, err := client.GetChildPages(context.Background(), tt.parentID, tt.limit, "")
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetChildPages() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("GetChildPages() error = %q, want containing %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			if !tt.wantErr {
+				if len(result) != tt.wantCount {
+					t.Errorf("GetChildPages() returned %d pages, want %d", len(result), tt.wantCount)
+				}
+				if hasMore != tt.wantHasMore {
+					t.Errorf("GetChildPages() hasMore = %v, want %v", hasMore, tt.wantHasMore)
+				}
+			}
+		})
+	}
+}
+
 func TestClient_ListPages(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -642,7 +1018,7 @@ func TestClient_ListPages(t *testing.T) {
 			}
 
 			client := NewClient(baseURL, "test@example.com", "token")
-			result, err := client.ListPages(context.Background(), tt.spaceID, tt.limit, tt.sort)
+			result, _, err := client.ListPages(context.Background(), tt.spaceID, tt.limit, tt.sort)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListPages() error = %v, wantErr %v", err, tt.wantErr)
@@ -737,7 +1113,7 @@ func TestClient_GetChildPages(t *testing.T) {
 			}
 
 			client := NewClient(baseURL, "test@example.com", "token")
-			result, err := client.GetChildPages(context.Background(), tt.parentID, tt.limit, tt.sort)
+			result, _, err := client.GetChildPages(context.Background(), tt.parentID, tt.limit, tt.sort)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetChildPages() error = %v, wantErr %v", err, tt.wantErr)

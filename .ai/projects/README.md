@@ -10,7 +10,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 
 | Project | Title | Status | Started | Completed |
 |---------|-------|--------|---------|-----------|
-| - | - | - | - | - |
+| 001 | [Search Command Implementation](p-001-cli-search-command.md) | Pending | - | - |
 
 Note: Completed projects are in `completed/`
 

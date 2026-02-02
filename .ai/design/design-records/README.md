@@ -6,6 +6,6 @@ Design Records (DRs) document significant technical decisions made during develo
 
 | Number | Title | Status | Date |
 | ------ | ----- | ------ | ---- |
-| -      | -     | -      | -    |
+| 001 | [Search Command CLI Interface](dr-001-cli-search-command.md) | Accepted | 2025-02-02 |
 
 Note: Superseded design records are in `superseded/`

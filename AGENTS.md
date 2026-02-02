@@ -2,9 +2,13 @@
 
 ## Project Overview
 
-**acon** (Atlassian Confluence) is a CLI tool for managing Confluence pages and spaces from the terminal. It provides bidirectional Markdown conversion (Markdown ↔ Confluence storage format), enabling a local-first documentation workflow.
+acon (Atlassian Confluence) is a CLI tool for managing Confluence pages and spaces from the terminal. It provides bidirectional Markdown conversion (Markdown ↔ Confluence storage format), enabling a local-first documentation workflow.
 
-**Technology Stack:**
+- Active Project: .ai/projects/p-001-cli-search-command.md
+- Design Record: .ai/design/design-records/dr-001-cli-search-c
+  ommand.md
+
+Technology Stack:
 
 - Go 1.25.4
 - Cobra (CLI framework)
@@ -60,17 +64,17 @@ go test -v ./internal/api
 
 ### Formatting
 
-- **Always run `gofmt -w .` before committing**
+- Always run `gofmt -w .` before committing
 - Use tabs for indentation (Go standard)
 - Maximum line length: 100-120 characters (soft limit)
 
 ### Naming Conventions
 
-- **Exported** (public): `CamelCase` - e.g., `CreatePage`, `Client`
-- **Unexported** (private): `camelCase` - e.g., `doRequest`, `appVersion`
-- **Package names**: Short, lowercase, singular - e.g., `api`, `config`, `converter`
-- **Error variables**: `err` for standard, `ErrSomething` for sentinels
-- **Acronyms**: All caps in names - e.g., `APIToken`, `BaseURL`, `PageID`
+- Exported (public): `CamelCase` - e.g., `CreatePage`, `Client`
+- Unexported (private): `camelCase` - e.g., `doRequest`, `appVersion`
+- Package names: Short, lowercase, singular - e.g., `api`, `config`, `converter`
+- Error variables: `err` for standard, `ErrSomething` for sentinels
+- Acronyms: All caps in names - e.g., `APIToken`, `BaseURL`, `PageID`
 
 ### Go Idioms
 
@@ -113,9 +117,9 @@ acon/
 
 ### Architecture Principles
 
-- **Separation of concerns**: `cmd/` handles CLI, `internal/api/` handles API, `internal/converter/` handles conversion
-- **No circular dependencies**: `cmd/` → `internal/*`, never the reverse
-- **Stateless API client**: `Client` struct holds credentials, methods are pure operations
+- Separation of concerns: `cmd/` handles CLI, `internal/api/` handles API, `internal/converter/` handles conversion
+- No circular dependencies: `cmd/` → `internal/*`, never the reverse
+- Stateless API client: `Client` struct holds credentials, methods are pure operations
 
 ## Development Workflow
 
@@ -191,7 +195,7 @@ func TestConvertMarkdown(t *testing.T) {
         expected string
     }{
         {"heading", "# Title", "<h1>Title</h1>"},
-        {"bold", "**text**", "<strong>text</strong>"},
+        {"bold", "text", "<strong>text</strong>"},
     }
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
@@ -275,8 +279,8 @@ func (c *Client) MethodName(params) (*Result, error) {
 
 ### Markdown Conversion
 
-- **To Confluence**: Use `internal/converter/markdown.go`
-- **From Confluence**: Use `internal/converter/storage.go`
+- To Confluence: Use `internal/converter/markdown.go`
+- From Confluence: Use `internal/converter/storage.go`
 - Both handle CommonMark + GFM features (tables, task lists, strikethrough)
 - See `testdata/README.md` for feature support matrix and known limitations
 

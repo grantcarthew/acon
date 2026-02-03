@@ -36,7 +36,7 @@ Environment Variables:
 			fmt.Println("Report issues: https://github.com/grantcarthew/acon/issues/new")
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help() // Ignore error - Help() rarely fails and we're exiting anyway
 	},
 }
 

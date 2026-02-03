@@ -185,7 +185,7 @@ func TestClient_GetPage(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
-					json.NewEncoder(w).Encode(tt.response)
+					_ = json.NewEncoder(w).Encode(tt.response) //nolint:errcheck
 				}
 			}))
 			defer server.Close()
@@ -303,7 +303,7 @@ func TestClient_CreatePage(t *testing.T) {
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				json.NewEncoder(w).Encode(tt.response)
+				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
 			defer server.Close()
 
@@ -395,7 +395,7 @@ func TestClient_UpdatePage(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
-					json.NewEncoder(w).Encode(tt.response)
+					_ = json.NewEncoder(w).Encode(tt.response) //nolint:errcheck
 				}
 			}))
 			defer server.Close()
@@ -506,7 +506,7 @@ func TestClient_MovePage(t *testing.T) {
 					switch {
 					case callCount == 1 && strings.Contains(r.URL.Path, "/pages/123"):
 						// Get source page
-						json.NewEncoder(w).Encode(Page{
+						_ = json.NewEncoder(w).Encode(Page{
 							ID:      "123",
 							Title:   "Source Page",
 							SpaceID: "space-1",
@@ -515,14 +515,14 @@ func TestClient_MovePage(t *testing.T) {
 						})
 					case callCount == 2 && strings.Contains(r.URL.Path, "/pages/456"):
 						// Get target page
-						json.NewEncoder(w).Encode(Page{
+						_ = json.NewEncoder(w).Encode(Page{
 							ID:      "456",
 							Title:   "Target Page",
 							SpaceID: "space-1",
 						})
 					case callCount == 3 && r.Method == http.MethodPut:
 						// Update page
-						json.NewEncoder(w).Encode(Page{
+						_ = json.NewEncoder(w).Encode(Page{
 							ID:       "123",
 							Title:    "Source Page",
 							ParentID: "456",
@@ -561,9 +561,9 @@ func TestClient_MovePage(t *testing.T) {
 
 					switch callCount {
 					case 1:
-						json.NewEncoder(w).Encode(Page{ID: "123", SpaceID: "space-1"})
+						_ = json.NewEncoder(w).Encode(Page{ID: "123", SpaceID: "space-1"})
 					case 2:
-						json.NewEncoder(w).Encode(Page{ID: "456", SpaceID: "space-2"})
+						_ = json.NewEncoder(w).Encode(Page{ID: "456", SpaceID: "space-2"})
 					}
 				}
 			},
@@ -631,7 +631,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 					callCount++
 					w.Header().Set("Content-Type", "application/json")
 					if callCount == 1 {
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: []Page{
 								{ID: "1", Title: "Page 1"},
 								{ID: "2", Title: "Page 2"},
@@ -640,7 +640,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 						})
 					} else {
 						// Second call shouldn't happen because limit is reached
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: []Page{{ID: "3", Title: "Page 3"}},
 						})
 					}
@@ -657,7 +657,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "1", Title: "Page 1"},
 							{ID: "2", Title: "Page 2"},
@@ -676,7 +676,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "1", Title: "Page 1"},
 							{ID: "2", Title: "Page 2"},
@@ -697,7 +697,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "1", Title: "Page 1"},
 							{ID: "2", Title: "Page 2"},
@@ -718,7 +718,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{},
 					})
 				}
@@ -742,7 +742,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 						for i := range 25 {
 							pages[i] = Page{ID: fmt.Sprintf("page-%d", i+1), Title: "Page"}
 						}
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: pages,
 							Links:   PaginationLinks{Next: "/wiki/api/v2/pages?cursor=abc"},
 						})
@@ -751,7 +751,7 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 						for i := range 20 {
 							pages[i] = Page{ID: fmt.Sprintf("page-%d", i+26), Title: "Page"}
 						}
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: pages,
 						})
 					}
@@ -848,7 +848,7 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 					callCount++
 					w.Header().Set("Content-Type", "application/json")
 					if callCount == 1 {
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: []Page{
 								{ID: "c1", Title: "Child 1"},
 								{ID: "c2", Title: "Child 2"},
@@ -857,7 +857,7 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 						})
 					} else {
 						// Second call shouldn't happen because limit is reached
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: []Page{{ID: "c3", Title: "Child 3"}},
 						})
 					}
@@ -874,7 +874,7 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "c1", Title: "Child 1"},
 						},
@@ -892,7 +892,7 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "c1", Title: "Child 1"},
 							{ID: "c2", Title: "Child 2"},
@@ -912,7 +912,7 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "c1", Title: "Child 1"},
 							{ID: "c2", Title: "Child 2"},
@@ -1010,7 +1010,7 @@ func TestClient_ListPages(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "1", Title: "Page 1"},
 							{ID: "2", Title: "Page 2"},
@@ -1033,7 +1033,7 @@ func TestClient_ListPages(t *testing.T) {
 						t.Errorf("Sort parameter not found in query: %s", r.URL.RawQuery)
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{{ID: "1", Title: "Page 1"}},
 					})
 				}
@@ -1064,7 +1064,7 @@ func TestClient_ListPages(t *testing.T) {
 						for i := range 25 {
 							pages[i] = Page{ID: string(rune('a' + i)), Title: "Page"}
 						}
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: pages,
 							Links:   PaginationLinks{Next: "/wiki/api/v2/pages?cursor=abc"},
 						})
@@ -1074,7 +1074,7 @@ func TestClient_ListPages(t *testing.T) {
 						for i := range 25 {
 							pages[i] = Page{ID: string(rune('A' + i)), Title: "Page"}
 						}
-						json.NewEncoder(w).Encode(PageListResponse{
+						_ = json.NewEncoder(w).Encode(PageListResponse{
 							Results: pages,
 						})
 					}
@@ -1090,7 +1090,7 @@ func TestClient_ListPages(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "1", Title: "Page 1"},
 							{ID: "2", Title: "Page 2"},
@@ -1163,7 +1163,7 @@ func TestClient_GetChildPages(t *testing.T) {
 						t.Errorf("Expected /children in path: %s", r.URL.Path)
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{
 							{ID: "c1", Title: "Child 1"},
 							{ID: "c2", Title: "Child 2"},
@@ -1192,7 +1192,7 @@ func TestClient_GetChildPages(t *testing.T) {
 						t.Errorf("Sort parameter not found: %s", r.URL.RawQuery)
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(PageListResponse{
+					_ = json.NewEncoder(w).Encode(PageListResponse{
 						Results: []Page{{ID: "c1", Title: "Child 1"}},
 					})
 				}
@@ -1286,7 +1286,7 @@ func TestClient_GetSpace(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				json.NewEncoder(w).Encode(tt.response)
+				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
 			defer server.Close()
 
@@ -1331,7 +1331,7 @@ func TestClient_ListSpaces(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(SpaceListResponse{
+					_ = json.NewEncoder(w).Encode(SpaceListResponse{
 						Results: []Space{
 							{ID: "1", Key: "SPACE1", Name: "Space 1"},
 							{ID: "2", Key: "SPACE2", Name: "Space 2"},
@@ -1356,7 +1356,7 @@ func TestClient_ListSpaces(t *testing.T) {
 						for i := range 25 {
 							spaces[i] = Space{ID: string(rune('a' + i)), Key: "KEY"}
 						}
-						json.NewEncoder(w).Encode(SpaceListResponse{
+						_ = json.NewEncoder(w).Encode(SpaceListResponse{
 							Results: spaces,
 							Links:   PaginationLinks{Next: "/wiki/api/v2/spaces?cursor=abc"},
 						})
@@ -1365,7 +1365,7 @@ func TestClient_ListSpaces(t *testing.T) {
 						for i := range 25 {
 							spaces[i] = Space{ID: string(rune('A' + i)), Key: "KEY"}
 						}
-						json.NewEncoder(w).Encode(SpaceListResponse{
+						_ = json.NewEncoder(w).Encode(SpaceListResponse{
 							Results: spaces,
 						})
 					}
@@ -1380,7 +1380,7 @@ func TestClient_ListSpaces(t *testing.T) {
 			setupServer: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(SpaceListResponse{
+					_ = json.NewEncoder(w).Encode(SpaceListResponse{
 						Results: []Space{
 							{ID: "1", Key: "SPACE1"},
 							{ID: "2", Key: "SPACE2"},
@@ -1441,7 +1441,7 @@ func TestClient_doRequest_Headers(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Page{ID: "1"})
+		_ = json.NewEncoder(w).Encode(Page{ID: "1"})
 	}))
 	defer server.Close()
 

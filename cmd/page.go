@@ -537,7 +537,9 @@ func init() {
 	pageCreateCmd.Flags().StringVarP(&pageSpace, "space", "s", "", "Space key (uses config default if not specified)")
 	pageCreateCmd.Flags().StringVarP(&pageParent, "parent", "p", "", "Parent page ID")
 	pageCreateCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
-	pageCreateCmd.MarkFlagRequired("title")
+	if err := pageCreateCmd.MarkFlagRequired("title"); err != nil {
+		panic(err)
+	}
 
 	pageViewCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
@@ -555,7 +557,9 @@ func init() {
 
 	pageMoveCmd.Flags().StringVarP(&moveParent, "parent", "p", "", "Target parent page ID (required)")
 	pageMoveCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
-	pageMoveCmd.MarkFlagRequired("parent")
+	if err := pageMoveCmd.MarkFlagRequired("parent"); err != nil {
+		panic(err)
+	}
 
 	pageCmd.AddCommand(pageCreateCmd)
 	pageCmd.AddCommand(pageViewCmd)

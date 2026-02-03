@@ -355,8 +355,8 @@ func TestReadAndValidateContent_DashIsNotFilePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	os.Chdir(tmpDir)
-	t.Cleanup(func() { os.Chdir(originalDir) })
+	_ = os.Chdir(tmpDir)                            //nolint:errcheck
+	t.Cleanup(func() { _ = os.Chdir(originalDir) }) //nolint:errcheck
 
 	// Create a file literally named "-"
 	if err := os.WriteFile("-", []byte("file content"), 0644); err != nil {

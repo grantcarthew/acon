@@ -764,7 +764,7 @@ func BenchmarkMarkdownToStorage(b *testing.B) {
 
 func BenchmarkStorageToMarkdown(b *testing.B) {
 	for b.Loop() {
-		StorageToMarkdown(benchmarkStorage)
+		_, _ = StorageToMarkdown(benchmarkStorage) //nolint:errcheck
 	}
 }
 
@@ -782,6 +782,6 @@ func BenchmarkStorageToMarkdown_Large(b *testing.B) {
 	large := strings.Repeat(benchmarkStorage, 10)
 	b.ResetTimer()
 	for b.Loop() {
-		StorageToMarkdown(large)
+		_, _ = StorageToMarkdown(large) //nolint:errcheck
 	}
 }

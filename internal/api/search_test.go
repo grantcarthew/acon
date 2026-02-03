@@ -682,7 +682,7 @@ func TestClient_Search(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
-					json.NewEncoder(w).Encode(tt.response)
+					_ = json.NewEncoder(w).Encode(tt.response)
 				}
 			}))
 			defer server.Close()

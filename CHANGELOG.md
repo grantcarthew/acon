@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0](https://github.com/grantcarthew/acon/compare/v1.4.0...v1.5.0) - 2026-02-03
+
+### Added
+
+- Search command with CQL (Confluence Query Language) support
+- Simple search flags: --title, --label, --creator, --space, --type
+- Raw CQL support via --cql flag for advanced queries
+- Cursor-based pagination for search results
+- Support for 'me' alias in creator searches
+
+### Changed
+
+- Improved API pagination logic with hasMore return value
+- Enhanced code quality by addressing linter warnings
+
 ## [1.4.0](https://github.com/grantcarthew/acon/compare/v1.3.0...v1.4.0) - 2026-01-28
 
 ### Changed

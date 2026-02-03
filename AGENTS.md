@@ -14,7 +14,7 @@ Technology Stack:
 - Cobra (CLI framework)
 - Goldmark (Markdown parser with GFM extension)
 - html-to-Markdown v2 (Confluence storage to Markdown)
-- Confluence REST API v2
+- Confluence REST API v2 (primary) and v1 (search endpoint only)
 
 ## Setup Commands
 
@@ -329,6 +329,7 @@ See `.ai/tasks/release-process.md` for the complete release workflow including:
 ## Reference Documentation
 
 - [Confluence REST API v2](https://developer.atlassian.com/cloud/confluence/rest/v2/intro/)
+- [Confluence REST API v1](https://developer.atlassian.com/cloud/confluence/rest/v1/intro/) (used for CQL search as v2 does not support it)
 - [Confluence Storage Format](https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html)
 - [Cobra CLI Framework](https://github.com/spf13/cobra)
 - [Goldmark Markdown Parser](https://github.com/yuin/goldmark)

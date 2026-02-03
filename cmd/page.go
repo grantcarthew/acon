@@ -127,9 +127,17 @@ var pageCreateCmd = &cobra.Command{
 			return fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
 		}
 
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Resolving space: %s\n", spaceKey)
+		}
+
 		space, err := client.GetSpace(cmd.Context(), spaceKey)
 		if err != nil {
 			return fmt.Errorf("getting space: %w", err)
+		}
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Space ID: %s\n", space.ID)
 		}
 
 		content, err := readAndValidateContent(pageFile)
@@ -137,7 +145,16 @@ var pageCreateCmd = &cobra.Command{
 			return err
 		}
 
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Read %d bytes of markdown content\n", len(content))
+			fmt.Fprintf(os.Stderr, "[Page Create] Converting markdown to Confluence storage format\n")
+		}
+
 		htmlContent := converter.MarkdownToStorage(string(content))
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Converted to %d bytes of storage format\n", len(htmlContent))
+		}
 
 		req := &api.PageCreateRequest{
 			SpaceID: space.ID,
@@ -151,11 +168,22 @@ var pageCreateCmd = &cobra.Command{
 
 		if pageParent != "" {
 			req.ParentID = pageParent
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[Page Create] Setting parent ID: %s\n", pageParent)
+			}
+		}
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Creating page: %s\n", pageTitle)
 		}
 
 		result, err := client.CreatePage(cmd.Context(), req)
 		if err != nil {
 			return fmt.Errorf("creating page: %w", err)
+		}
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page Create] Page created successfully, ID: %s\n", result.ID)
 		}
 
 		if outputJSON {
@@ -179,20 +207,34 @@ var pageViewCmd = &cobra.Command{
 
 		pageID := args[0]
 
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page View] Fetching page: %s\n", pageID)
+		}
+
 		page, err := client.GetPage(cmd.Context(), pageID)
 		if err != nil {
 			return fmt.Errorf("getting page: %w", err)
+		}
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page View] Page title: %s\n", page.Title)
 		}
 
 		if outputJSON {
 			return printJSON(page)
 		}
 		if page.Body != nil && page.Body.Storage != nil {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[Page View] Converting %d bytes from storage to markdown\n", len(page.Body.Storage.Value))
+			}
 			markdown, err := converter.StorageToMarkdown(page.Body.Storage.Value)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to convert to markdown: %v\n", err)
 				fmt.Println(page.Body.Storage.Value)
 			} else {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[Page View] Converted to %d bytes of markdown\n", len(markdown))
+				}
 				fmt.Println(markdown)
 			}
 		}
@@ -300,6 +342,9 @@ var pageListCmd = &cobra.Command{
 
 		if pageParent != "" {
 			// List children of a specific parent page
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[Page List] Listing children of parent: %s (limit: %d, sort: %s)\n", pageParent, pageLimit, pageSort)
+			}
 			sortValue, valid := mapChildSortValue(pageSort, pageDesc)
 			if !valid {
 				return fmt.Errorf("invalid sort value '%s' (valid: web, title, created, modified, id)", pageSort)
@@ -312,6 +357,9 @@ var pageListCmd = &cobra.Command{
 
 			// Client-side title sort (not supported by API)
 			if pageSort == "title" {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[Page List] Performing client-side title sort\n")
+				}
 				sort.Slice(pages, func(i, j int) bool {
 					if pageDesc {
 						return strings.ToLower(pages[i].Title) > strings.ToLower(pages[j].Title)
@@ -327,6 +375,10 @@ var pageListCmd = &cobra.Command{
 			}
 			if spaceKey == "" {
 				return fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
+			}
+
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[Page List] Listing pages in space: %s (limit: %d, sort: %s)\n", spaceKey, pageLimit, pageSort)
 			}
 
 			sortValue := mapSpaceSortValue(pageSort, pageDesc)
@@ -408,6 +460,9 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 	var content []byte
 
 	if pageFile != "" && pageFile != "-" {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Content] Reading from file: %s\n", pageFile)
+		}
 		// Check file size before reading
 		info, err := os.Stat(pageFile)
 		if err != nil {
@@ -421,7 +476,13 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading file: %w", err)
 		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Content] Read %d bytes from file\n", len(content))
+		}
 	} else {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Content] Reading from stdin\n")
+		}
 		// Read from stdin (either no file specified, or "-" explicitly)
 		// Check if stdin is a terminal (no piped input) - skip check if "-" was explicit
 		if pageFile != "-" {
@@ -444,11 +505,18 @@ func readAndValidateContent(pageFile string) ([]byte, error) {
 		if len(content) > maxContentSize {
 			return nil, fmt.Errorf("stdin too large (max %d bytes)", maxContentSize)
 		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Content] Read %d bytes from stdin\n", len(content))
+		}
 	}
 
 	content = bytes.TrimSpace(content)
 	if len(content) == 0 {
 		return nil, fmt.Errorf("content cannot be empty")
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[Content] Content validated: %d bytes (after trimming)\n", len(content))
 	}
 
 	return content, nil

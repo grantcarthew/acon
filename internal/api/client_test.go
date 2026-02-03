@@ -11,19 +11,98 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("https://example.atlassian.net", "test@example.com", "token123")
+	tests := []struct {
+		name        string
+		baseURL     string
+		email       string
+		apiToken    string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "valid parameters",
+			baseURL:  "https://example.atlassian.net",
+			email:    "test@example.com",
+			apiToken: "token123",
+			wantErr:  false,
+		},
+		{
+			name:        "empty baseURL",
+			baseURL:     "",
+			email:       "test@example.com",
+			apiToken:    "token123",
+			wantErr:     true,
+			errContains: "baseURL cannot be empty",
+		},
+		{
+			name:        "whitespace baseURL",
+			baseURL:     "   ",
+			email:       "test@example.com",
+			apiToken:    "token123",
+			wantErr:     true,
+			errContains: "baseURL cannot be empty",
+		},
+		{
+			name:        "empty email",
+			baseURL:     "https://example.atlassian.net",
+			email:       "",
+			apiToken:    "token123",
+			wantErr:     true,
+			errContains: "email cannot be empty",
+		},
+		{
+			name:        "whitespace email",
+			baseURL:     "https://example.atlassian.net",
+			email:       "   ",
+			apiToken:    "token123",
+			wantErr:     true,
+			errContains: "email cannot be empty",
+		},
+		{
+			name:        "empty apiToken",
+			baseURL:     "https://example.atlassian.net",
+			email:       "test@example.com",
+			apiToken:    "",
+			wantErr:     true,
+			errContains: "apiToken cannot be empty",
+		},
+		{
+			name:        "whitespace apiToken",
+			baseURL:     "https://example.atlassian.net",
+			email:       "test@example.com",
+			apiToken:    "   ",
+			wantErr:     true,
+			errContains: "apiToken cannot be empty",
+		},
+	}
 
-	if client.BaseURL != "https://example.atlassian.net" {
-		t.Errorf("BaseURL = %q, want %q", client.BaseURL, "https://example.atlassian.net")
-	}
-	if client.Email != "test@example.com" {
-		t.Errorf("Email = %q, want %q", client.Email, "test@example.com")
-	}
-	if client.APIToken != "token123" {
-		t.Errorf("APIToken = %q, want %q", client.APIToken, "token123")
-	}
-	if client.client == nil {
-		t.Error("HTTP client is nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewClient(tt.baseURL, tt.email, tt.apiToken)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewClient() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("NewClient() error = %q, want containing %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+			// For valid case, verify fields are set correctly
+			if client.BaseURL != tt.baseURL {
+				t.Errorf("BaseURL = %q, want %q", client.BaseURL, tt.baseURL)
+			}
+			if client.Email != tt.email {
+				t.Errorf("Email = %q, want %q", client.Email, tt.email)
+			}
+			if client.APIToken != tt.apiToken {
+				t.Errorf("APIToken = %q, want %q", client.APIToken, tt.apiToken)
+			}
+			if client.client == nil {
+				t.Error("HTTP client is nil")
+			}
+		})
 	}
 }
 
@@ -111,7 +190,10 @@ func TestClient_GetPage(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.GetPage(context.Background(), tt.pageID)
 
 			if (err != nil) != tt.wantErr {
@@ -225,7 +307,10 @@ func TestClient_CreatePage(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.CreatePage(context.Background(), tt.request)
 
 			if (err != nil) != tt.wantErr {
@@ -315,7 +400,10 @@ func TestClient_UpdatePage(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.UpdatePage(context.Background(), tt.pageID, tt.request)
 
 			if (err != nil) != tt.wantErr {
@@ -376,8 +464,11 @@ func TestClient_DeletePage(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
-			err := client.DeletePage(context.Background(), tt.pageID)
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
+			err = client.DeletePage(context.Background(), tt.pageID)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DeletePage() error = %v, wantErr %v", err, tt.wantErr)
@@ -494,7 +585,10 @@ func TestClient_MovePage(t *testing.T) {
 				baseURL = server.URL
 			}
 
-			client := NewClient(baseURL, "test@example.com", "token")
+			client, err := NewClient(baseURL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.MovePage(context.Background(), tt.pageID, tt.newParentID)
 
 			if (err != nil) != tt.wantErr {
@@ -703,7 +797,10 @@ func TestClient_ListPages_hasMore(t *testing.T) {
 				baseURL = server.URL
 			}
 
-			client := NewClient(baseURL, "test@example.com", "token")
+			client, err := NewClient(baseURL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, hasMore, err := client.ListPages(context.Background(), tt.spaceID, tt.limit, "")
 
 			if (err != nil) != tt.wantErr {
@@ -864,7 +961,10 @@ func TestClient_GetChildPages_hasMore(t *testing.T) {
 				baseURL = server.URL
 			}
 
-			client := NewClient(baseURL, "test@example.com", "token")
+			client, err := NewClient(baseURL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, hasMore, err := client.GetChildPages(context.Background(), tt.parentID, tt.limit, "")
 
 			if (err != nil) != tt.wantErr {
@@ -1017,7 +1117,10 @@ func TestClient_ListPages(t *testing.T) {
 				baseURL = server.URL
 			}
 
-			client := NewClient(baseURL, "test@example.com", "token")
+			client, err := NewClient(baseURL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, _, err := client.ListPages(context.Background(), tt.spaceID, tt.limit, tt.sort)
 
 			if (err != nil) != tt.wantErr {
@@ -1112,7 +1215,10 @@ func TestClient_GetChildPages(t *testing.T) {
 				baseURL = server.URL
 			}
 
-			client := NewClient(baseURL, "test@example.com", "token")
+			client, err := NewClient(baseURL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, _, err := client.GetChildPages(context.Background(), tt.parentID, tt.limit, tt.sort)
 
 			if (err != nil) != tt.wantErr {
@@ -1184,7 +1290,10 @@ func TestClient_GetSpace(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.GetSpace(context.Background(), tt.spaceKey)
 
 			if (err != nil) != tt.wantErr {
@@ -1289,7 +1398,10 @@ func TestClient_ListSpaces(t *testing.T) {
 			server := httptest.NewServer(tt.setupServer(t))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test@example.com", "token")
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
 			result, err := client.ListSpaces(context.Background(), tt.limit)
 
 			if (err != nil) != tt.wantErr {
@@ -1333,8 +1445,11 @@ func TestClient_doRequest_Headers(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test@example.com", "secret-token")
-	_, err := client.GetPage(context.Background(), "1")
+	client, err := NewClient(server.URL, "test@example.com", "secret-token")
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	_, err = client.GetPage(context.Background(), "1")
 	if err != nil {
 		t.Errorf("GetPage() error = %v", err)
 	}
@@ -1347,12 +1462,15 @@ func TestClient_doRequest_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test@example.com", "token")
+	client, err := NewClient(server.URL, "test@example.com", "token")
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err := client.GetPage(ctx, "123")
+	_, err = client.GetPage(ctx, "123")
 	if err == nil {
 		t.Error("Expected error for cancelled context")
 	}

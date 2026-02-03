@@ -23,6 +23,7 @@ acon page update 123456 -f docs.md
 
 - **Bidirectional Markdown conversion** - Write in Markdown, view in Markdown, never touch HTML
 - **Full page management** - Create, view, update, delete, and list pages
+- **Powerful search** - CQL-based search with simple flags for common queries
 - **Space operations** - View and list Confluence spaces
 - **JSON output** - Perfect for scripting and automation
 - **Environment-based config** - No config files, works with existing Atlassian tokens
@@ -103,6 +104,7 @@ acon [command]
 Available Commands:
   page        Manage Confluence pages
   space       Manage Confluence spaces
+  search      Search Confluence content
   debug       Debug converter functions
   completion  Generate shell completion
   help        Help about any command
@@ -305,6 +307,92 @@ acon page list -l 10
 # JSON output
 acon page list -j
 ```
+
+### Search Commands
+
+#### `acon search`
+
+Search Confluence content using CQL (Confluence Query Language).
+
+```bash
+acon search [QUERY] [flags]
+
+Arguments:
+  QUERY   Optional positional text query for full-text search
+
+Flags:
+      --cql string       Raw CQL query (overrides all other flags)
+      --creator string   Filter by creator (email or 'me')
+  -j, --json            Output JSON instead of human-readable format
+      --label string     Search by label (exact match)
+  -l, --limit int       Maximum number of results (default: 25)
+  -s, --space string    Filter by space key (uses CONFLUENCE_SPACE_KEY if not set)
+      --title string     Search in page titles
+      --type string      Content type (page, blogpost, attachment, etc.)
+```
+
+**How Search Works**:
+
+- By default, searches pages only (`type=page`)
+- All search criteria are combined with AND logic
+- The positional `QUERY` argument searches across titles, bodies, and labels
+- Use `--cql` for advanced queries (date ranges, OR logic, ancestor searches)
+
+**Examples**:
+
+```bash
+# Simple full-text search
+acon search "api documentation"
+
+# Search with space filter
+acon search "meeting notes" -s DEV
+
+# Title-only search
+acon search --title "Security Review"
+
+# Multiple filters
+acon search "api" --label important --creator me -s DEV
+
+# Label-only search
+acon search --label urgent
+
+# Creator filter (use 'me' for current user)
+acon search --creator me --label todo
+acon search "refactor" --creator user@example.com
+
+# Search different content types
+acon search "diagram" --type attachment -s TEAM
+
+# Limit results
+acon search "bug" -l 10
+
+# JSON output for scripting
+acon search "api" -s DEV -j
+
+# Advanced CQL for complex queries
+acon search --cql "type=page and ancestor=123456 and created>=startOfDay('-7d')"
+acon search --cql "type=page and (label=urgent or label=critical)"
+```
+
+**Output Format**:
+
+```
+Page Title (SPACE_KEY)
+https://your-instance.atlassian.net/wiki/spaces/SPACE/pages/123456/Page+Title
+...excerpt with matching text...
+Modified: 2024-01-15
+
+---
+Showing 25 of 150 results
+```
+
+**Tips**:
+
+- Use quotes around multi-word queries: `"api docs"`
+- The `me` alias automatically resolves to your user: `--creator me`
+- Combine flags for precise searches: text + title + label + space
+- Use `--cql` for advanced features not available via simple flags
+- CQL reference: [Confluence Query Language](https://developer.atlassian.com/server/confluence/advanced-searching-using-cql/)
 
 ### Space Commands
 
@@ -674,7 +762,7 @@ A: Yes! If you can convert your content to Markdown, acon can publish it to Conf
 
 **Q: Is there a way to search pages?**
 
-A: Not directly, but you can use JSON output with `jq` to filter results from `acon page list`.
+A: Yes! Use `acon search` with simple flags or advanced CQL queries. See the [Search Commands](#search-commands) section for examples.
 
 **Q: Can I use this in CI/CD?**
 

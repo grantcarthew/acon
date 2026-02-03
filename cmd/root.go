@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/grantcarthew/acon/internal/api"
@@ -12,6 +13,7 @@ import (
 var (
 	showVersion bool
 	appVersion  string
+	verbose     bool
 )
 
 var rootCmd = &cobra.Command{
@@ -48,6 +50,7 @@ func Execute(version string) {
 
 func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Print version")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Show detailed warnings and debug information")
 	rootCmd.AddCommand(pageCmd)
 	rootCmd.AddCommand(spaceCmd)
 }
@@ -55,10 +58,24 @@ func init() {
 // initClient loads configuration and creates an API client.
 // Returns the client and config for commands that need access to config values like SpaceKey.
 func initClient() (*api.Client, *config.Config, error) {
-	cfg, err := config.Load()
+	var verboseLog io.Writer
+	if verbose {
+		verboseLog = os.Stderr
+	}
+
+	cfg, err := config.LoadWithVerbose(verboseLog)
 	if err != nil {
 		return nil, nil, err
 	}
-	client := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
+	client, err := api.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create API client: %w", err)
+	}
+
+	// Enable verbose logging if flag is set
+	if verbose {
+		client.VerboseLog = os.Stderr
+	}
+
 	return client, &cfg, nil
 }

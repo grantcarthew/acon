@@ -12,10 +12,11 @@ import (
 )
 
 type Client struct {
-	BaseURL  string
-	Email    string
-	APIToken string
-	client   *http.Client
+	BaseURL    string
+	Email      string
+	APIToken   string
+	client     *http.Client
+	VerboseLog io.Writer // Writer for verbose logging (typically os.Stderr or nil)
 }
 
 type Page struct {
@@ -70,28 +71,73 @@ type SpaceListResponse struct {
 	Links   PaginationLinks `json:"_links,omitempty"`
 }
 
-func NewClient(baseURL, email, apiToken string) *Client {
+func NewClient(baseURL, email, apiToken string) (*Client, error) {
+	// Validate required parameters to fail fast
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, fmt.Errorf("baseURL cannot be empty")
+	}
+	if strings.TrimSpace(email) == "" {
+		return nil, fmt.Errorf("email cannot be empty")
+	}
+	if strings.TrimSpace(apiToken) == "" {
+		return nil, fmt.Errorf("apiToken cannot be empty")
+	}
+
 	return &Client{
-		BaseURL:  baseURL,
-		Email:    email,
-		APIToken: apiToken,
+		BaseURL:    baseURL,
+		Email:      email,
+		APIToken:   apiToken,
+		VerboseLog: nil, // Set by caller if verbose mode enabled
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+	}, nil
+}
+
+// logVerbose writes to VerboseLog if it's set
+func (c *Client) logVerbose(format string, args ...interface{}) {
+	if c.VerboseLog != nil {
+		fmt.Fprintf(c.VerboseLog, format, args...)
 	}
 }
 
+// truncateStringUTF8Safe safely truncates a string to maxRunes runes,
+// ensuring we don't split multi-byte UTF-8 characters.
+func truncateStringUTF8Safe(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	// Only track timing if verbose logging is enabled
+	var start time.Time
+	if c.VerboseLog != nil {
+		start = time.Now()
+	}
+
 	var reqBody io.Reader
+	var reqBodyBytes []byte
 	if body != nil {
 		jsonData, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
 		}
-		reqBody = bytes.NewBuffer(jsonData)
+		reqBodyBytes = jsonData
+		reqBody = bytes.NewBuffer(reqBodyBytes)
 	}
 
 	url := strings.TrimRight(c.BaseURL, "/") + path
+	c.logVerbose("[API] %s %s\n", method, url)
+
+	if c.VerboseLog != nil && len(reqBodyBytes) > 0 {
+		// Truncate large bodies (UTF-8 safe to avoid splitting multi-byte characters)
+		preview := truncateStringUTF8Safe(string(reqBodyBytes), 200)
+		c.logVerbose("[API] Request body: %s\n", preview)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -103,6 +149,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		c.logVerbose("[API] Request failed: %v\n", err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -112,8 +159,20 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	if c.VerboseLog != nil {
+		duration := time.Since(start)
+		c.logVerbose("[API] Response status: %d (took %v)\n", resp.StatusCode, duration)
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.logVerbose("[API] Error response: %s\n", string(respBody))
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	if c.VerboseLog != nil {
+		// Log response preview for successful requests (UTF-8 safe truncation)
+		preview := truncateStringUTF8Safe(string(respBody), 200)
+		c.logVerbose("[API] Response body: %s\n", preview)
 	}
 
 	return respBody, nil
@@ -269,11 +328,17 @@ func (c *Client) paginatePages(ctx context.Context, initialPath string, limit in
 		return nil, false, fmt.Errorf("limit cannot exceed %d", maxLimit)
 	}
 
+	c.logVerbose("[Pagination] Starting pagination: limit=%d\n", limit)
+
 	var allPages []Page
 	hasMore := false
 	path := initialPath
+	requestNum := 0
 
 	for {
+		requestNum++
+		c.logVerbose("[Pagination] Request %d: fetching from API\n", requestNum)
+
 		respBody, err := c.doRequest(ctx, "GET", path, nil)
 		if err != nil {
 			return nil, false, fmt.Errorf("%s request failed: %w", errorContext, err)
@@ -284,6 +349,7 @@ func (c *Client) paginatePages(ctx context.Context, initialPath string, limit in
 			return nil, false, fmt.Errorf("failed to parse %s response: %w", errorContext, err)
 		}
 
+		c.logVerbose("[Pagination] Received %d pages (total so far: %d)\n", len(result.Results), len(allPages)+len(result.Results))
 		allPages = append(allPages, result.Results...)
 
 		// Check if there are more pages available from the API
@@ -301,11 +367,13 @@ func (c *Client) paginatePages(ctx context.Context, initialPath string, limit in
 	// Trim to exact limit if we accumulated more than requested
 	trimmed := len(allPages) > limit
 	if trimmed {
+		c.logVerbose("[Pagination] Trimming results from %d to %d\n", len(allPages), limit)
 		allPages = allPages[:limit]
 	}
 
 	// hasMore is true if either the API has more pages OR we trimmed local results
 	hasMore = hasMore || trimmed
+	c.logVerbose("[Pagination] Complete: returning %d pages, hasMore=%v\n", len(allPages), hasMore)
 
 	return allPages, hasMore, nil
 }

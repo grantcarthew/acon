@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,16 +12,102 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// formatExcerptForTerminal converts HTML highlighted excerpts to terminal-friendly format.
-// The Confluence API returns excerpts with <b> tags around matched search terms.
-// This function converts those to ANSI bold formatting and decodes HTML entities.
-func formatExcerptForTerminal(excerpt string) string {
-	// Convert <b> tags to ANSI bold
-	result := strings.ReplaceAll(excerpt, "<b>", "\033[1m")
-	result = strings.ReplaceAll(result, "</b>", "\033[0m")
-	// Decode HTML entities (e.g., &amp;, &lt;, &gt;, &quot;)
-	result = html.UnescapeString(result)
-	return result
+// excerptContextChars is the number of characters to show around a matched term
+const excerptContextChars = 150
+
+// htmlTagRegex matches HTML tags for stripping
+var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
+
+// formatExcerptForTerminal processes an excerpt for terminal display.
+// It finds the search term, extracts context around it, and highlights the match.
+// If no search term is provided or found, it shows the start of the excerpt truncated.
+func formatExcerptForTerminal(excerpt, searchTerm string) string {
+	// Strip HTML tags and decode entities
+	text := htmlTagRegex.ReplaceAllString(excerpt, "")
+	text = html.UnescapeString(text)
+	// Normalise whitespace (collapse multiple spaces/newlines)
+	text = strings.Join(strings.Fields(text), " ")
+
+	if text == "" {
+		return ""
+	}
+
+	// If no search term, just truncate from start
+	if searchTerm == "" {
+		return truncateExcerpt(text, excerptContextChars)
+	}
+
+	// Find the search term (case-insensitive)
+	lowerText := strings.ToLower(text)
+	lowerTerm := strings.ToLower(searchTerm)
+	matchIndex := strings.Index(lowerText, lowerTerm)
+
+	if matchIndex == -1 {
+		// Term not found in excerpt, just truncate from start
+		return truncateExcerpt(text, excerptContextChars)
+	}
+
+	// Extract context window around the match
+	contextStart := matchIndex - excerptContextChars/2
+	contextEnd := matchIndex + len(searchTerm) + excerptContextChars/2
+
+	// Adjust bounds
+	prefix := ""
+	suffix := ""
+	if contextStart < 0 {
+		contextStart = 0
+	} else {
+		prefix = "..."
+		// Try to start at a word boundary
+		for contextStart < matchIndex && text[contextStart] != ' ' {
+			contextStart++
+		}
+		if contextStart < matchIndex {
+			contextStart++ // Skip the space
+		}
+	}
+
+	if contextEnd > len(text) {
+		contextEnd = len(text)
+	} else {
+		suffix = "..."
+		// Try to end at a word boundary
+		for contextEnd > matchIndex+len(searchTerm) && text[contextEnd-1] != ' ' {
+			contextEnd--
+		}
+	}
+
+	contextText := text[contextStart:contextEnd]
+
+	// Highlight the matched term with ANSI bold
+	// Find the term again in the extracted context
+	lowerContext := strings.ToLower(contextText)
+	termStart := strings.Index(lowerContext, lowerTerm)
+	if termStart != -1 {
+		termEnd := termStart + len(searchTerm)
+		highlighted := contextText[:termStart] +
+			"\033[1m" + contextText[termStart:termEnd] + "\033[0m" +
+			contextText[termEnd:]
+		return prefix + highlighted + suffix
+	}
+
+	return prefix + contextText + suffix
+}
+
+// truncateExcerpt truncates text to maxLen characters at a word boundary
+func truncateExcerpt(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+
+	// Find last space before maxLen
+	truncated := text[:maxLen]
+	lastSpace := strings.LastIndex(truncated, " ")
+	if lastSpace > maxLen/2 {
+		truncated = truncated[:lastSpace]
+	}
+
+	return truncated + "..."
 }
 
 var (
@@ -148,7 +235,12 @@ var searchCmd = &cobra.Command{
 
 			// Excerpt (with search term highlighting for terminal)
 			if searchResult.Excerpt != "" {
-				fmt.Printf("%s\n", formatExcerptForTerminal(searchResult.Excerpt))
+				// Use text query or title query for highlighting
+				highlightTerm := textQuery
+				if highlightTerm == "" {
+					highlightTerm = searchTitle
+				}
+				fmt.Printf("%s\n", formatExcerptForTerminal(searchResult.Excerpt, highlightTerm))
 			}
 
 			// Modified date

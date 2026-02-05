@@ -1,10 +1,10 @@
-# acon Agent Help
+# Confluence CLI - acon
 
 stdout is Markdown, token efficient
 
-Use --json for structured data
+Use --json only for structured data
 
-## Quick Start
+Quick Start:
 
 ```
 acon space list
@@ -17,8 +17,9 @@ acon search "query text"
 acon search --title "page name"
 acon search --label documentation
 acon search --cql "type=page AND space=SPACE"
-echo "# Title" | acon page create -t "Page Title" -s SPACE
 acon page create -t "Title" -f content.md -s SPACE --parent PAGE_ID
+echo "# Title" | acon page create -t "Page Title" -s SPACE
+echo "# Heading\n\nContent here" | acon page update PAGE_ID -f -
 acon page update PAGE_ID -f updated.md
 acon page update PAGE_ID -f content.md -m "Update message"
 acon page move PAGE_ID --parent NEW_PARENT_ID
@@ -27,7 +28,7 @@ acon debug md < input.md
 acon debug storage < storage.html
 ```
 
-## Global Flags
+Global Flags:
 
 ```
 --verbose   Show detailed warnings and debug information
@@ -36,7 +37,7 @@ acon debug storage < storage.html
 --version   Print version
 ```
 
-## Command Flags
+Command Flags:
 
 ```
 page create:
@@ -85,13 +86,13 @@ debug storage:
   (reads storage format from stdin, outputs markdown)
 ```
 
-## Help Topics
+More Help:
 
 ```
 acon help agents workflow
 acon help agents all
 ```
 
-## Bug Reports
+Bug Reports:
 
 Repository and issue tracker available via `acon --version`.

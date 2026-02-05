@@ -1,10 +1,12 @@
-# Workflow Patterns
+# Confluence CLI - acon
 
+Workflow Patterns:
 
 ```
 acon page create -t "Page Title" -f content.md -s SPACE
 acon page create -t "Child Page" -f content.md -s SPACE --parent PAGE_ID
 echo "# Heading\n\nContent here" | acon page create -t "Title" -s SPACE
+echo "# Heading\n\nContent here" | acon page create -t "Title" -s SPACE -f -
 cat document.md | acon page create -t "Title" -s SPACE
 URL=$(acon page create -t "Title" -f content.md -s SPACE)
 ID=$(acon page create -t "Title" -f content.md -s SPACE --json | jq -r '.id')

@@ -1,4 +1,4 @@
-package cmd
+package cli
 
 import (
 	"fmt"
@@ -290,5 +290,6 @@ func init() {
 	searchCmd.Flags().StringVar(&searchCQL, "cql", "", "Raw CQL query (overrides all other flags)")
 	searchCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
 
+	searchCmd.GroupID = "core"
 	rootCmd.AddCommand(searchCmd)
 }

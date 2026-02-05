@@ -1,9 +1,12 @@
-package cmd
+package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/grantcarthew/acon/internal/api"
 	"github.com/grantcarthew/acon/internal/config"
@@ -11,9 +14,10 @@ import (
 )
 
 var (
-	showVersion bool
-	appVersion  string
-	verbose     bool
+	// Version is set at build time via -ldflags.
+	Version = "dev"
+
+	verbose bool
 )
 
 var rootCmd = &cobra.Command{
@@ -29,30 +33,38 @@ Environment Variables:
   CONFLUENCE_EMAIL          User email (overrides ATLASSIAN_EMAIL)
   CONFLUENCE_API_TOKEN      API token (overrides ATLASSIAN_API_TOKEN)
   CONFLUENCE_SPACE_KEY      Default space key (optional)`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if showVersion {
-			fmt.Printf("acon version %s\n", appVersion)
-			fmt.Println("Repository: https://github.com/grantcarthew/acon")
-			fmt.Println("Report issues: https://github.com/grantcarthew/acon/issues/new")
-			return
-		}
-		_ = cmd.Help() // Ignore error - Help() rarely fails and we're exiting anyway
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
 	},
 }
 
-func Execute(version string) {
-	appVersion = version
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
 func init() {
-	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Print version")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Show detailed warnings and debug information")
+
+	rootCmd.Version = Version
+	rootCmd.SetVersionTemplate(`acon version {{.Version}}
+Repository: https://github.com/grantcarthew/acon
+Report issues: https://github.com/grantcarthew/acon/issues/new
+`)
+
+	// Command groups for organized help output
+	rootCmd.AddGroup(&cobra.Group{ID: "core", Title: "Commands:"})
+	rootCmd.AddGroup(&cobra.Group{ID: "utility", Title: "Utilities:"})
+
+	// Disable default completion command (we provide our own with GroupID)
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
+	pageCmd.GroupID = "core"
+	spaceCmd.GroupID = "core"
+
 	rootCmd.AddCommand(pageCmd)
 	rootCmd.AddCommand(spaceCmd)
+}
+
+func Execute() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return rootCmd.ExecuteContext(ctx)
 }
 
 // initClient loads configuration and creates an API client.

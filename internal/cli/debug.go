@@ -1,4 +1,4 @@
-package cmd
+package cli
 
 import (
 	"fmt"
@@ -48,6 +48,7 @@ var debugStorageCmd = &cobra.Command{
 }
 
 func init() {
+	debugCmd.GroupID = "utility"
 	rootCmd.AddCommand(debugCmd)
 	debugCmd.AddCommand(debugMdCmd)
 	debugCmd.AddCommand(debugStorageCmd)

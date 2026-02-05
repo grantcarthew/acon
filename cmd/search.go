@@ -116,7 +116,7 @@ var (
 	searchCreator string
 	searchSpace   string
 	searchLimit   int
-	searchStart   int
+	searchCursor  string
 	searchType    string
 	searchCQL     string
 )
@@ -191,7 +191,7 @@ var searchCmd = &cobra.Command{
 		}
 
 		// Execute search
-		result, hasMore, err := client.Search(cmd.Context(), cql, searchLimit, searchStart)
+		result, nextCursor, err := client.Search(cmd.Context(), cql, searchLimit, searchCursor)
 		if err != nil {
 			return fmt.Errorf("search failed: %w", err)
 		}
@@ -266,13 +266,11 @@ var searchCmd = &cobra.Command{
 			}
 		}
 
-		// Pagination summary - consistent with page list command
+		// Pagination summary
 		fmt.Println()
-		if hasMore {
-			// Safe to do arithmetic - validated above
-			nextStart := result.Start + result.Size
-			fmt.Printf("Showing %d of %d results (more available - use --start %d for next page)\n",
-				len(result.Results), result.TotalSize, nextStart)
+		if nextCursor != "" {
+			fmt.Printf("Showing %d of %d results\n", len(result.Results), result.TotalSize)
+			fmt.Printf("Next Cursor: %s\n", nextCursor)
 		} else {
 			fmt.Printf("Showing all %d results\n", result.TotalSize)
 		}
@@ -287,7 +285,7 @@ func init() {
 	searchCmd.Flags().StringVar(&searchCreator, "creator", "", "Filter by creator (email or 'me')")
 	searchCmd.Flags().StringVarP(&searchSpace, "space", "s", "", "Filter by space key (uses config default if not specified)")
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", api.DefaultSearchLimit, "Maximum number of results per page")
-	searchCmd.Flags().IntVar(&searchStart, "start", 0, "Starting index for pagination (0-based)")
+	searchCmd.Flags().StringVar(&searchCursor, "cursor", "", "Pagination cursor from previous search")
 	searchCmd.Flags().StringVar(&searchType, "type", "", "Content type (page, blogpost, attachment, etc.)")
 	searchCmd.Flags().StringVar(&searchCQL, "cql", "", "Raw CQL query (overrides all other flags)")
 	searchCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")

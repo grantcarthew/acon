@@ -258,24 +258,24 @@ func TestBuildCQL(t *testing.T) {
 
 func TestClient_Search(t *testing.T) {
 	tests := []struct {
-		name        string
-		cql         string
-		limit       int
-		start       int
-		statusCode  int
-		response    any
-		wantErr     bool
-		wantHasMore bool
-		errContains string
-		checkResult func(*testing.T, *SearchResponse, bool)
+		name           string
+		cql            string
+		limit          int
+		cursor         string
+		statusCode     int
+		response       any
+		wantErr        bool
+		wantNextCursor string
+		errContains    string
+		checkResult    func(*testing.T, *SearchResponse, string)
 	}{
 		{
-			name:        "successful search with results",
-			cql:         "type=page and space=DEV",
-			limit:       25,
-			start:       0,
-			statusCode:  http.StatusOK,
-			wantHasMore: false,
+			name:           "successful search with results",
+			cql:            "type=page and space=DEV",
+			limit:          25,
+			cursor:         "",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "",
 			response: SearchResponse{
 				Results: []SearchResult{
 					{
@@ -302,7 +302,7 @@ func TestClient_Search(t *testing.T) {
 				SearchDuration: 45,
 			},
 			wantErr: false,
-			checkResult: func(t *testing.T, resp *SearchResponse, hasMore bool) {
+			checkResult: func(t *testing.T, resp *SearchResponse, nextCursor string) {
 				if len(resp.Results) != 1 {
 					t.Errorf("Results length = %d, want 1", len(resp.Results))
 				}
@@ -318,12 +318,12 @@ func TestClient_Search(t *testing.T) {
 			},
 		},
 		{
-			name:        "empty search results",
-			cql:         "type=page and text ~ \"nonexistent\"",
-			limit:       25,
-			start:       0,
-			statusCode:  http.StatusOK,
-			wantHasMore: false,
+			name:           "empty search results",
+			cql:            "type=page and text ~ \"nonexistent\"",
+			limit:          25,
+			cursor:         "",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "",
 			response: SearchResponse{
 				Results:        []SearchResult{},
 				Start:          0,
@@ -334,7 +334,7 @@ func TestClient_Search(t *testing.T) {
 				SearchDuration: 12,
 			},
 			wantErr: false,
-			checkResult: func(t *testing.T, resp *SearchResponse, hasMore bool) {
+			checkResult: func(t *testing.T, resp *SearchResponse, nextCursor string) {
 				if len(resp.Results) != 0 {
 					t.Errorf("Results length = %d, want 0", len(resp.Results))
 				}
@@ -344,12 +344,12 @@ func TestClient_Search(t *testing.T) {
 			},
 		},
 		{
-			name:        "pagination with more results",
-			cql:         "type=page",
-			limit:       25,
-			start:       0,
-			statusCode:  http.StatusOK,
-			wantHasMore: true,
+			name:           "pagination with more results",
+			cql:            "type=page",
+			limit:          25,
+			cursor:         "",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "abc123",
 			response: SearchResponse{
 				Results: []SearchResult{
 					{
@@ -375,7 +375,7 @@ func TestClient_Search(t *testing.T) {
 				},
 			},
 			wantErr: false,
-			checkResult: func(t *testing.T, resp *SearchResponse, hasMore bool) {
+			checkResult: func(t *testing.T, resp *SearchResponse, nextCursor string) {
 				if resp.Links.Next == "" {
 					t.Error("Expected next link for pagination")
 				}
@@ -388,7 +388,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "empty CQL",
 			cql:         "",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			wantErr:     true,
 			errContains: "cql query cannot be empty",
 		},
@@ -396,7 +396,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "whitespace CQL",
 			cql:         "   ",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			wantErr:     true,
 			errContains: "cql query cannot be empty",
 		},
@@ -404,7 +404,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "zero limit returns error",
 			cql:         "type=page",
 			limit:       0,
-			start:       0,
+			cursor:      "",
 			wantErr:     true,
 			errContains: "limit must be greater than 0",
 		},
@@ -412,23 +412,15 @@ func TestClient_Search(t *testing.T) {
 			name:        "negative limit returns error",
 			cql:         "type=page",
 			limit:       -5,
-			start:       0,
+			cursor:      "",
 			wantErr:     true,
 			errContains: "limit must be greater than 0",
-		},
-		{
-			name:        "negative start returns error",
-			cql:         "type=page",
-			limit:       25,
-			start:       -1,
-			wantErr:     true,
-			errContains: "start must be greater than or equal to 0",
 		},
 		{
 			name:        "400 bad request - invalid CQL",
 			cql:         "invalid syntax",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			statusCode:  http.StatusBadRequest,
 			response:    map[string]string{"message": "Invalid CQL query"},
 			wantErr:     true,
@@ -438,7 +430,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "401 unauthorized",
 			cql:         "type=page",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			statusCode:  http.StatusUnauthorized,
 			response:    map[string]string{"message": "Unauthorized"},
 			wantErr:     true,
@@ -448,7 +440,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "404 not found",
 			cql:         "type=page",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			statusCode:  http.StatusNotFound,
 			response:    map[string]string{"message": "Not found"},
 			wantErr:     true,
@@ -458,7 +450,7 @@ func TestClient_Search(t *testing.T) {
 			name:        "429 rate limited",
 			cql:         "type=page",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			statusCode:  http.StatusTooManyRequests,
 			response:    map[string]string{"message": "Rate limit exceeded"},
 			wantErr:     true,
@@ -468,19 +460,19 @@ func TestClient_Search(t *testing.T) {
 			name:        "500 server error",
 			cql:         "type=page",
 			limit:       25,
-			start:       0,
+			cursor:      "",
 			statusCode:  http.StatusInternalServerError,
 			response:    map[string]string{"message": "Internal error"},
 			wantErr:     true,
 			errContains: "API error (status 500)",
 		},
 		{
-			name:        "URL encoding special characters",
-			cql:         "text ~ \"api docs\" and label = \"urgent!\"",
-			limit:       25,
-			start:       0,
-			statusCode:  http.StatusOK,
-			wantHasMore: false,
+			name:           "URL encoding special characters",
+			cql:            "text ~ \"api docs\" and label = \"urgent!\"",
+			limit:          25,
+			cursor:         "",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "",
 			response: SearchResponse{
 				Results:   []SearchResult{},
 				Start:     0,
@@ -490,12 +482,12 @@ func TestClient_Search(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "pagination with start parameter",
-			cql:         "type=page",
-			limit:       25,
-			start:       25,
-			statusCode:  http.StatusOK,
-			wantHasMore: true,
+			name:           "pagination with cursor parameter",
+			cql:            "type=page",
+			limit:          25,
+			cursor:         "abc123",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "def456",
 			response: SearchResponse{
 				Results: []SearchResult{
 					{
@@ -515,21 +507,24 @@ func TestClient_Search(t *testing.T) {
 				Limit:     25,
 				Size:      25,
 				TotalSize: 150,
+				Links: SearchPaginationLinks{
+					Next: "/rest/api/search?cql=type=page&limit=25&cursor=def456",
+				},
 			},
 			wantErr: false,
-			checkResult: func(t *testing.T, resp *SearchResponse, hasMore bool) {
-				if resp.Start != 25 {
-					t.Errorf("Start = %d, want 25", resp.Start)
+			checkResult: func(t *testing.T, resp *SearchResponse, nextCursor string) {
+				if nextCursor != "def456" {
+					t.Errorf("nextCursor = %q, want %q", nextCursor, "def456")
 				}
 			},
 		},
 		{
-			name:        "hasMore false at end of results",
-			cql:         "type=page",
-			limit:       25,
-			start:       100,
-			statusCode:  http.StatusOK,
-			wantHasMore: false,
+			name:           "no more results - empty next link",
+			cql:            "type=page",
+			limit:          25,
+			cursor:         "xyz789",
+			statusCode:     http.StatusOK,
+			wantNextCursor: "",
 			response: SearchResponse{
 				Results: []SearchResult{
 					{
@@ -550,88 +545,13 @@ func TestClient_Search(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name:       "invalid response - negative start",
-			cql:        "type=page",
-			limit:      25,
-			start:      0,
-			statusCode: http.StatusOK,
-			response: SearchResponse{
-				Results:   []SearchResult{},
-				Start:     -1,
-				Size:      0,
-				TotalSize: 0,
-			},
-			wantErr:     true,
-			errContains: "negative values",
-		},
-		{
-			name:       "invalid response - negative size",
-			cql:        "type=page",
-			limit:      25,
-			start:      0,
-			statusCode: http.StatusOK,
-			response: SearchResponse{
-				Results:   []SearchResult{},
-				Start:     0,
-				Size:      -5,
-				TotalSize: 0,
-			},
-			wantErr:     true,
-			errContains: "negative values",
-		},
-		{
-			name:       "invalid response - negative totalSize",
-			cql:        "type=page",
-			limit:      25,
-			start:      0,
-			statusCode: http.StatusOK,
-			response: SearchResponse{
-				Results:   []SearchResult{},
-				Start:     0,
-				Size:      0,
-				TotalSize: -10,
-			},
-			wantErr:     true,
-			errContains: "negative values",
-		},
-		{
-			name:       "invalid response - start exceeds totalSize",
-			cql:        "type=page",
-			limit:      25,
-			start:      0,
-			statusCode: http.StatusOK,
-			response: SearchResponse{
-				Results:   []SearchResult{},
-				Start:     200,
-				Size:      0,
-				TotalSize: 100,
-			},
-			wantErr:     true,
-			errContains: "exceeds total size",
-		},
-		{
-			name:       "invalid response - overflow risk",
-			cql:        "type=page",
-			limit:      25,
-			start:      0,
-			statusCode: http.StatusOK,
-			response: SearchResponse{
-				Results:   []SearchResult{},
-				Start:     2147483647, // MaxInt32
-				Size:      100,
-				TotalSize: 2147483647,
-			},
-			wantErr:     true,
-			errContains: "overflow",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Skip server validation for validation error tests
-				if tt.wantErr && (tt.cql == "" || strings.TrimSpace(tt.cql) == "" || tt.limit <= 0 || tt.start < 0) {
+				if tt.wantErr && (tt.cql == "" || strings.TrimSpace(tt.cql) == "" || tt.limit <= 0) {
 					return
 				}
 
@@ -659,10 +579,10 @@ func TestClient_Search(t *testing.T) {
 					return
 				}
 
-				// Verify start parameter
-				startParam := r.URL.Query().Get("start")
-				if startParam == "" {
-					t.Error("Start query parameter is missing")
+				// Verify cursor parameter if provided
+				cursorParam := r.URL.Query().Get("cursor")
+				if tt.cursor != "" && cursorParam != tt.cursor {
+					t.Errorf("Cursor parameter = %q, want %q", cursorParam, tt.cursor)
 					return
 				}
 
@@ -691,7 +611,7 @@ func TestClient_Search(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient() error = %v", err)
 			}
-			result, hasMore, err := client.Search(context.Background(), tt.cql, tt.limit, tt.start)
+			result, nextCursor, err := client.Search(context.Background(), tt.cql, tt.limit, tt.cursor)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Search() error = %v, wantErr %v", err, tt.wantErr)
@@ -706,11 +626,11 @@ func TestClient_Search(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				if hasMore != tt.wantHasMore {
-					t.Errorf("Search() hasMore = %v, want %v", hasMore, tt.wantHasMore)
+				if nextCursor != tt.wantNextCursor {
+					t.Errorf("Search() nextCursor = %q, want %q", nextCursor, tt.wantNextCursor)
 				}
 				if tt.checkResult != nil {
-					tt.checkResult(t, result, hasMore)
+					tt.checkResult(t, result, nextCursor)
 				}
 			}
 		})
@@ -732,12 +652,55 @@ func TestClient_Search_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, _, err = client.Search(ctx, "type=page", 25, 0)
+	_, _, err = client.Search(ctx, "type=page", 25, "")
 	if err == nil {
 		t.Error("Search() with canceled context should return error")
 	}
 	if !strings.Contains(err.Error(), "context canceled") {
 		t.Errorf("Error should mention context cancellation, got: %v", err)
+	}
+}
+
+func TestExtractCursorFromLink(t *testing.T) {
+	tests := []struct {
+		name     string
+		nextLink string
+		want     string
+	}{
+		{
+			name:     "valid link with cursor",
+			nextLink: "/rest/api/search?cql=type=page&limit=25&cursor=abc123",
+			want:     "abc123",
+		},
+		{
+			name:     "empty link",
+			nextLink: "",
+			want:     "",
+		},
+		{
+			name:     "link without cursor",
+			nextLink: "/rest/api/search?cql=type=page&limit=25",
+			want:     "",
+		},
+		{
+			name:     "complex cursor value",
+			nextLink: "/rest/api/search?cql=type=page&limit=25&cursor=eyJsaW1pdCI6MjUsInN0YXJ0IjoyNX0%3D",
+			want:     "eyJsaW1pdCI6MjUsInN0YXJ0IjoyNX0=",
+		},
+		{
+			name:     "full URL with cursor",
+			nextLink: "https://example.atlassian.net/wiki/rest/api/search?cql=type=page&cursor=xyz789",
+			want:     "xyz789",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractCursorFromLink(tt.nextLink)
+			if got != tt.want {
+				t.Errorf("extractCursorFromLink(%q) = %q, want %q", tt.nextLink, got, tt.want)
+			}
+		})
 	}
 }
 

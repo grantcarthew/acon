@@ -221,26 +221,24 @@ func BuildCQL(params SearchParams) (string, error) {
 // Search performs a CQL search using the v1 API.
 // The cql parameter should be the complete CQL query string (not URL-encoded).
 // The limit parameter controls the maximum number of results per page.
-// The start parameter specifies the starting index for pagination (0-based).
-// Returns the search response, a boolean indicating if more results are available, and an error.
-func (c *Client) Search(ctx context.Context, cql string, limit, start int) (*SearchResponse, bool, error) {
+// The cursor parameter is used for pagination (empty string for first page).
+// Returns the search response, the next cursor (empty if no more results), and an error.
+func (c *Client) Search(ctx context.Context, cql string, limit int, cursor string) (*SearchResponse, string, error) {
 	if strings.TrimSpace(cql) == "" {
-		return nil, false, fmt.Errorf("cql query cannot be empty")
+		return nil, "", fmt.Errorf("cql query cannot be empty")
 	}
 
 	if limit <= 0 {
-		return nil, false, fmt.Errorf("limit must be greater than 0")
-	}
-
-	if start < 0 {
-		return nil, false, fmt.Errorf("start must be greater than or equal to 0")
+		return nil, "", fmt.Errorf("limit must be greater than 0")
 	}
 
 	// Construct query parameters using url.Values for safe encoding
 	params := url.Values{}
 	params.Set("cql", cql)
 	params.Set("limit", fmt.Sprintf("%d", limit))
-	params.Set("start", fmt.Sprintf("%d", start))
+	if cursor != "" {
+		params.Set("cursor", cursor)
+	}
 	params.Set("excerpt", "highlight")
 	params.Set("expand", "content.space")
 
@@ -248,35 +246,32 @@ func (c *Client) Search(ctx context.Context, cql string, limit, start int) (*Sea
 
 	respBody, err := c.doRequest(ctx, "GET", path, nil)
 	if err != nil {
-		return nil, false, fmt.Errorf("search request failed: %w", err)
+		return nil, "", fmt.Errorf("search request failed: %w", err)
 	}
 
 	var result SearchResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, false, fmt.Errorf("failed to parse search response: %w", err)
+		return nil, "", fmt.Errorf("failed to parse search response: %w", err)
 	}
 
-	// Validate response values before arithmetic to prevent integer overflow
-	// and handle malicious/buggy API responses gracefully
-	if result.Start < 0 || result.Size < 0 || result.TotalSize < 0 {
-		return nil, false, fmt.Errorf("invalid search response: negative values (start=%d, size=%d, totalSize=%d)",
-			result.Start, result.Size, result.TotalSize)
+	// Extract next cursor from _links.next URL if present
+	nextCursor := extractCursorFromLink(result.Links.Next)
+
+	return &result, nextCursor, nil
+}
+
+// extractCursorFromLink parses the cursor parameter from a _links.next URL.
+// Returns empty string if no cursor is found.
+func extractCursorFromLink(nextLink string) string {
+	if nextLink == "" {
+		return ""
 	}
 
-	// Sanity check: current position shouldn't exceed total
-	if result.Start > result.TotalSize {
-		return nil, false, fmt.Errorf("invalid search response: start position %d exceeds total size %d",
-			result.Start, result.TotalSize)
+	// Parse the URL to extract the cursor parameter
+	parsed, err := url.Parse(nextLink)
+	if err != nil {
+		return ""
 	}
 
-	// Calculate if more results are available
-	// Safe to do arithmetic now that we've validated non-negative values
-	// Check for overflow before addition (Go silently wraps on overflow)
-	if result.Start > 0 && result.Size > 0 && result.Start > (1<<31-result.Size) {
-		// Extremely unlikely in practice, but handle gracefully
-		return nil, false, fmt.Errorf("invalid search response: pagination overflow (start=%d, size=%d)", result.Start, result.Size)
-	}
-	hasMore := result.Start+result.Size < result.TotalSize
-
-	return &result, hasMore, nil
+	return parsed.Query().Get("cursor")
 }

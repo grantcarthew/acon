@@ -241,7 +241,7 @@ func (c *Client) Search(ctx context.Context, cql string, limit, start int) (*Sea
 	params.Set("cql", cql)
 	params.Set("limit", fmt.Sprintf("%d", limit))
 	params.Set("start", fmt.Sprintf("%d", start))
-	params.Set("excerpt", "indexed")
+	params.Set("excerpt", "highlight")
 	params.Set("expand", "content.space")
 
 	path := "/wiki/rest/api/search?" + params.Encode()

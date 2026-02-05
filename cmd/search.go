@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"strings"
 	"time"
@@ -9,6 +10,18 @@ import (
 	"github.com/grantcarthew/acon/internal/api"
 	"github.com/spf13/cobra"
 )
+
+// formatExcerptForTerminal converts HTML highlighted excerpts to terminal-friendly format.
+// The Confluence API returns excerpts with <b> tags around matched search terms.
+// This function converts those to ANSI bold formatting and decodes HTML entities.
+func formatExcerptForTerminal(excerpt string) string {
+	// Convert <b> tags to ANSI bold
+	result := strings.ReplaceAll(excerpt, "<b>", "\033[1m")
+	result = strings.ReplaceAll(result, "</b>", "\033[0m")
+	// Decode HTML entities (e.g., &amp;, &lt;, &gt;, &quot;)
+	result = html.UnescapeString(result)
+	return result
+}
 
 var (
 	searchTitle   string
@@ -133,9 +146,9 @@ var searchCmd = &cobra.Command{
 				}
 			}
 
-			// Excerpt
+			// Excerpt (with search term highlighting for terminal)
 			if searchResult.Excerpt != "" {
-				fmt.Printf("%s\n", searchResult.Excerpt)
+				fmt.Printf("%s\n", formatExcerptForTerminal(searchResult.Excerpt))
 			}
 
 			// Modified date

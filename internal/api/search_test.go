@@ -668,8 +668,8 @@ func TestClient_Search(t *testing.T) {
 
 				// Verify excerpt parameter
 				excerptParam := r.URL.Query().Get("excerpt")
-				if excerptParam != "indexed" {
-					t.Errorf("Excerpt parameter = %q, want %q", excerptParam, "indexed")
+				if excerptParam != "highlight" {
+					t.Errorf("Excerpt parameter = %q, want %q", excerptParam, "highlight")
 					return
 				}
 

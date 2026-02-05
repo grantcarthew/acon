@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0](https://github.com/grantcarthew/acon/compare/v1.5.0...v2.0.0) - 2026-02-05
+
+### Changed
+
+- Search results now display formatted excerpts for terminal readability
+- Expanded content shown in search results
+- Improved cursor-based pagination for search
+
 ## [1.5.0](https://github.com/grantcarthew/acon/compare/v1.4.0...v1.5.0) - 2026-02-03
 
 ### Added

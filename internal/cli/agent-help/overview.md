@@ -2,7 +2,7 @@
 
 stdout is Markdown, token efficient
 
-Use --json only for structured data
+Use --json only for structured data parsing
 
 Quick Start:
 

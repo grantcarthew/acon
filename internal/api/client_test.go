@@ -1317,6 +1317,78 @@ func TestClient_GetSpace(t *testing.T) {
 	}
 }
 
+func TestClient_GetSpaceByID(t *testing.T) {
+	tests := []struct {
+		name        string
+		spaceID     string
+		statusCode  int
+		response    any
+		wantErr     bool
+		errContains string
+		wantKey     string
+	}{
+		{
+			name:       "successful get",
+			spaceID:    "space-1",
+			statusCode: http.StatusOK,
+			response:   Space{ID: "space-1", Key: "TEST", Name: "Test Space", Type: "global"},
+			wantErr:    false,
+			wantKey:    "TEST",
+		},
+		{
+			name:        "empty space id",
+			spaceID:     "",
+			wantErr:     true,
+			errContains: "spaceID cannot be empty",
+		},
+		{
+			name:        "not found",
+			spaceID:     "missing",
+			statusCode:  http.StatusNotFound,
+			response:    map[string]string{"message": "space not found"},
+			wantErr:     true,
+			errContains: "get space by id request failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				expectedPath := "/wiki/api/v2/spaces/" + tt.spaceID
+				if r.URL.Path != expectedPath {
+					t.Errorf("Path = %q, want %q", r.URL.Path, expectedPath)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCode)
+				_ = json.NewEncoder(w).Encode(tt.response)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(server.URL, "test@example.com", "token")
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
+			result, err := client.GetSpaceByID(context.Background(), tt.spaceID)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetSpaceByID() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr {
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("GetSpaceByID() error = %q, want containing %q", err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			if result.Key != tt.wantKey {
+				t.Errorf("GetSpaceByID() Key = %q, want %q", result.Key, tt.wantKey)
+			}
+		})
+	}
+}
+
 func TestClient_ListSpaces(t *testing.T) {
 	tests := []struct {
 		name        string

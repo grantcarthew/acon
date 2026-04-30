@@ -426,6 +426,24 @@ func (c *Client) GetSpace(ctx context.Context, spaceKey string) (*Space, error) 
 	return &result.Results[0], nil
 }
 
+func (c *Client) GetSpaceByID(ctx context.Context, spaceID string) (*Space, error) {
+	if strings.TrimSpace(spaceID) == "" {
+		return nil, fmt.Errorf("spaceID cannot be empty")
+	}
+
+	respBody, err := c.doRequest(ctx, "GET", fmt.Sprintf("/wiki/api/v2/spaces/%s", spaceID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("get space by id request failed: %w", err)
+	}
+
+	var space Space
+	if err := json.Unmarshal(respBody, &space); err != nil {
+		return nil, fmt.Errorf("failed to parse get space by id response: %w", err)
+	}
+
+	return &space, nil
+}
+
 func (c *Client) ListSpaces(ctx context.Context, limit int) ([]Space, error) {
 	var allSpaces []Space
 	perPage := min(limit, maxPerPage)

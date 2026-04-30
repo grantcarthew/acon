@@ -67,9 +67,17 @@ func Execute() error {
 	return rootCmd.ExecuteContext(ctx)
 }
 
+// newClient is the seam used by commands. Tests override it to inject a
+// client bound to an httptest server.
+var newClient = defaultNewClient
+
 // initClient loads configuration and creates an API client.
 // Returns the client and config for commands that need access to config values like SpaceKey.
 func initClient() (*api.Client, *config.Config, error) {
+	return newClient()
+}
+
+func defaultNewClient() (*api.Client, *config.Config, error) {
 	var verboseLog io.Writer
 	if verbose {
 		verboseLog = os.Stderr
@@ -84,7 +92,6 @@ func initClient() (*api.Client, *config.Config, error) {
 		return nil, nil, fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	// Enable verbose logging if flag is set
 	if verbose {
 		client.VerboseLog = os.Stderr
 	}

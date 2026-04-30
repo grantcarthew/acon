@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/grantcarthew/acon/internal/api"
+	"github.com/grantcarthew/acon/internal/config"
 	"github.com/grantcarthew/acon/internal/converter"
 	"github.com/spf13/cobra"
 )
@@ -93,14 +95,10 @@ func mapSpaceSortValue(sort string, desc bool) string {
 	return apiValue
 }
 
-// PageURL returns the browse URL for a Confluence page.
-// If spaceKey is provided, uses the canonical URL format.
-// Otherwise uses a generic format that Confluence redirects.
-func PageURL(baseURL, spaceKey, pageID string) string {
-	if spaceKey != "" {
-		return fmt.Sprintf("%s/wiki/spaces/%s/pages/%s", baseURL, spaceKey, pageID)
-	}
-	return fmt.Sprintf("%s/wiki/pages/%s", baseURL, pageID)
+// pageURL returns the canonical browse URL for a Confluence page.
+// Caller must supply a non-empty spaceKey; an empty key produces a malformed URL.
+func pageURL(baseURL, spaceKey, pageID string) string {
+	return fmt.Sprintf("%s/wiki/spaces/%s/pages/%s", baseURL, spaceKey, pageID)
 }
 
 var pageCmd = &cobra.Command{
@@ -189,7 +187,7 @@ var pageCreateCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Println(PageURL(cfg.BaseURL, spaceKey, result.ID))
+		fmt.Println(pageURL(cfg.BaseURL, spaceKey, result.ID))
 		return nil
 	},
 }
@@ -300,7 +298,18 @@ var pageUpdateCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Println(PageURL(cfg.BaseURL, "", result.ID))
+		space, err := client.GetSpaceByID(cmd.Context(), result.SpaceID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: page updated but could not resolve space key for URL: %v\n", err)
+			fmt.Println(result.ID)
+			return nil
+		}
+		if space.Key == "" {
+			fmt.Fprintf(os.Stderr, "Warning: page updated but space %s returned empty key\n", result.SpaceID)
+			fmt.Println(result.ID)
+			return nil
+		}
+		fmt.Println(pageURL(cfg.BaseURL, space.Key, result.ID))
 		return nil
 	},
 }
@@ -337,93 +346,135 @@ var pageListCmd = &cobra.Command{
 			return err
 		}
 
-		var pages []api.Page
-		var hasMore bool
+		var (
+			pages         []api.Page
+			hasMore       bool
+			spaceKeyCache map[string]string
+		)
 
 		if pageParent != "" {
-			// List children of a specific parent page
-			if verbose {
-				fmt.Fprintf(os.Stderr, "[Page List] Listing children of parent: %s (limit: %d, sort: %s)\n", pageParent, pageLimit, pageSort)
-			}
-			sortValue, valid := mapChildSortValue(pageSort, pageDesc)
-			if !valid {
-				return fmt.Errorf("invalid sort value '%s' (valid: web, title, created, modified, id)", pageSort)
-			}
-			var err error
-			pages, hasMore, err = client.GetChildPages(cmd.Context(), pageParent, pageLimit, sortValue)
-			if err != nil {
-				return fmt.Errorf("listing child pages: %w", err)
-			}
-
-			// Client-side title sort (not supported by API)
-			if pageSort == "title" {
-				if verbose {
-					fmt.Fprintf(os.Stderr, "[Page List] Performing client-side title sort\n")
-				}
-				sort.Slice(pages, func(i, j int) bool {
-					if pageDesc {
-						return strings.ToLower(pages[i].Title) > strings.ToLower(pages[j].Title)
-					}
-					return strings.ToLower(pages[i].Title) < strings.ToLower(pages[j].Title)
-				})
-			}
+			pages, hasMore, spaceKeyCache, err = listChildPages(cmd.Context(), client)
 		} else {
-			// List pages in space
-			spaceKey := pageSpace
-			if spaceKey == "" {
-				spaceKey = cfg.SpaceKey
-			}
-			if spaceKey == "" {
-				return fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
-			}
-
-			if verbose {
-				fmt.Fprintf(os.Stderr, "[Page List] Listing pages in space: %s (limit: %d, sort: %s)\n", spaceKey, pageLimit, pageSort)
-			}
-
-			sortValue := mapSpaceSortValue(pageSort, pageDesc)
-			if sortValue == "" && pageSort != "" {
-				return fmt.Errorf("invalid sort value '%s' (valid: title, created, modified, id)", pageSort)
-			}
-
-			space, err := client.GetSpace(cmd.Context(), spaceKey)
-			if err != nil {
-				return fmt.Errorf("getting space: %w", err)
-			}
-
-			pages, hasMore, err = client.ListPages(cmd.Context(), space.ID, pageLimit, sortValue)
-			if err != nil {
-				return fmt.Errorf("listing pages: %w", err)
-			}
+			pages, hasMore, spaceKeyCache, err = listPagesBySpace(cmd.Context(), client, cfg)
+		}
+		if err != nil {
+			return err
 		}
 
 		if outputJSON {
 			return printJSON(pages)
 		}
 
-		spaceKey := pageSpace
-		if spaceKey == "" {
-			spaceKey = cfg.SpaceKey
-		}
-		for _, page := range pages {
-			fmt.Printf("Title: %s\n", page.Title)
-			fmt.Printf("Status: %s\n", page.Status)
-			fmt.Printf("URL: %s\n", PageURL(cfg.BaseURL, spaceKey, page.ID))
-			fmt.Println("---")
-		}
-
-		// Show pagination summary after results
-		resultWord := "results"
-		if len(pages) == 1 {
-			resultWord = "result"
-		}
-		if hasMore {
-			fmt.Printf("\nShowing %d %s (more available - increase --limit to see more)\n", len(pages), resultWord)
-		} else {
-			fmt.Printf("\nShowing all %d %s\n", len(pages), resultWord)
-		}
-		return nil
+		return printPageList(cmd.Context(), client, os.Stdout, cfg.BaseURL, pages, hasMore, spaceKeyCache)
 	},
+}
+
+// listPagesBySpace fetches pages in a space using the user-supplied or configured
+// space key. The returned cache is primed with the resolved space so the printer
+// avoids a redundant lookup.
+func listPagesBySpace(ctx context.Context, client *api.Client, cfg *config.Config) ([]api.Page, bool, map[string]string, error) {
+	spaceKey := pageSpace
+	if spaceKey == "" {
+		spaceKey = cfg.SpaceKey
+	}
+	if spaceKey == "" {
+		return nil, false, nil, fmt.Errorf("space key required: use --space flag or set CONFLUENCE_SPACE_KEY")
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[Page List] Listing pages in space: %s (limit: %d, sort: %s)\n", spaceKey, pageLimit, pageSort)
+	}
+
+	sortValue := mapSpaceSortValue(pageSort, pageDesc)
+	if sortValue == "" && pageSort != "" {
+		return nil, false, nil, fmt.Errorf("invalid sort value '%s' (valid: title, created, modified, id)", pageSort)
+	}
+
+	space, err := client.GetSpace(ctx, spaceKey)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("getting space: %w", err)
+	}
+
+	pages, hasMore, err := client.ListPages(ctx, space.ID, pageLimit, sortValue)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("listing pages: %w", err)
+	}
+
+	return pages, hasMore, map[string]string{space.ID: spaceKey}, nil
+}
+
+// listChildPages fetches children of a specific parent page. The returned cache
+// is empty; the printer populates it on first miss.
+func listChildPages(ctx context.Context, client *api.Client) ([]api.Page, bool, map[string]string, error) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[Page List] Listing children of parent: %s (limit: %d, sort: %s)\n", pageParent, pageLimit, pageSort)
+	}
+
+	sortValue, valid := mapChildSortValue(pageSort, pageDesc)
+	if !valid {
+		return nil, false, nil, fmt.Errorf("invalid sort value '%s' (valid: web, title, created, modified, id)", pageSort)
+	}
+
+	pages, hasMore, err := client.GetChildPages(ctx, pageParent, pageLimit, sortValue)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("listing child pages: %w", err)
+	}
+
+	if pageSort == "title" {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[Page List] Performing client-side title sort\n")
+		}
+		sort.Slice(pages, func(i, j int) bool {
+			if pageDesc {
+				return strings.ToLower(pages[i].Title) > strings.ToLower(pages[j].Title)
+			}
+			return strings.ToLower(pages[i].Title) < strings.ToLower(pages[j].Title)
+		})
+	}
+
+	return pages, hasMore, map[string]string{}, nil
+}
+
+// printPageList renders a human-readable listing, resolving any space IDs not
+// already present in the cache.
+func printPageList(ctx context.Context, client *api.Client, out io.Writer, baseURL string, pages []api.Page, hasMore bool, spaceKeyCache map[string]string) error {
+	for _, page := range pages {
+		key, ok := spaceKeyCache[page.SpaceID]
+		if !ok {
+			space, err := client.GetSpaceByID(ctx, page.SpaceID)
+			switch {
+			case err != nil:
+				fmt.Fprintf(os.Stderr, "Warning: could not resolve space key for page %s: %v\n", page.ID, err)
+				// Negative-cache the miss so we do not repeat the lookup for every page in the same space.
+				spaceKeyCache[page.SpaceID] = ""
+			case space.Key == "":
+				fmt.Fprintf(os.Stderr, "Warning: space %s returned empty key for page %s\n", page.SpaceID, page.ID)
+				spaceKeyCache[page.SpaceID] = ""
+			default:
+				key = space.Key
+				spaceKeyCache[page.SpaceID] = key
+			}
+		}
+		fmt.Fprintf(out, "Title: %s\n", page.Title)
+		fmt.Fprintf(out, "Status: %s\n", page.Status)
+		if key == "" {
+			fmt.Fprintf(out, "URL: (unresolved, page ID: %s)\n", page.ID)
+		} else {
+			fmt.Fprintf(out, "URL: %s\n", pageURL(baseURL, key, page.ID))
+		}
+		fmt.Fprintln(out, "---")
+	}
+
+	resultWord := "results"
+	if len(pages) == 1 {
+		resultWord = "result"
+	}
+	if hasMore {
+		fmt.Fprintf(out, "\nShowing %d %s (more available - increase --limit to see more)\n", len(pages), resultWord)
+	} else {
+		fmt.Fprintf(out, "\nShowing all %d %s\n", len(pages), resultWord)
+	}
+	return nil
 }
 
 var pageMoveCmd = &cobra.Command{
@@ -451,7 +502,18 @@ var pageMoveCmd = &cobra.Command{
 		if outputJSON {
 			return printJSON(result)
 		}
-		fmt.Println(PageURL(cfg.BaseURL, "", result.ID))
+		space, err := client.GetSpaceByID(cmd.Context(), result.SpaceID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: page moved but could not resolve space key for URL: %v\n", err)
+			fmt.Println(result.ID)
+			return nil
+		}
+		if space.Key == "" {
+			fmt.Fprintf(os.Stderr, "Warning: page moved but space %s returned empty key\n", result.SpaceID)
+			fmt.Println(result.ID)
+			return nil
+		}
+		fmt.Println(pageURL(cfg.BaseURL, space.Key, result.ID))
 		return nil
 	},
 }

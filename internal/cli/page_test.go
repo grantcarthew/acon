@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grantcarthew/acon/internal/api"
 	"github.com/grantcarthew/acon/internal/config"
@@ -131,6 +133,110 @@ func TestReadAndValidateContent_NonexistentFile(t *testing.T) {
 	if err == nil {
 		t.Error("readAndValidateContent() expected error for nonexistent file")
 		return
+	}
+}
+
+// fakeFileInfo is a minimal os.FileInfo for stdin tests.
+type fakeFileInfo struct {
+	mode os.FileMode
+	size int64
+}
+
+func (f fakeFileInfo) Name() string       { return "stdin" }
+func (f fakeFileInfo) Size() int64        { return f.size }
+func (f fakeFileInfo) Mode() os.FileMode  { return f.mode }
+func (f fakeFileInfo) ModTime() time.Time { return time.Time{} }
+func (f fakeFileInfo) IsDir() bool        { return false }
+func (f fakeFileInfo) Sys() any           { return nil }
+
+func withStdin(t *testing.T, reader io.Reader, mode os.FileMode, statErr error) {
+	t.Helper()
+	origReader := stdinReader
+	origStat := stdinStat
+	stdinReader = reader
+	stdinStat = func() (os.FileInfo, error) {
+		if statErr != nil {
+			return nil, statErr
+		}
+		return fakeFileInfo{mode: mode}, nil
+	}
+	t.Cleanup(func() {
+		stdinReader = origReader
+		stdinStat = origStat
+	})
+}
+
+func TestReadAndValidateContent_StdinPiped(t *testing.T) {
+	withStdin(t, strings.NewReader("piped content"), 0, nil)
+
+	got, err := readAndValidateContent("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != "piped content" {
+		t.Errorf("got %q, want %q", string(got), "piped content")
+	}
+}
+
+func TestReadAndValidateContent_StdinExplicitDash(t *testing.T) {
+	// "-" must NOT trigger the TTY check, so even a CharDevice mode should pass.
+	withStdin(t, strings.NewReader("explicit dash content"), os.ModeCharDevice, nil)
+
+	got, err := readAndValidateContent("-")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != "explicit dash content" {
+		t.Errorf("got %q, want %q", string(got), "explicit dash content")
+	}
+}
+
+func TestReadAndValidateContent_StdinIsTerminal(t *testing.T) {
+	withStdin(t, strings.NewReader(""), os.ModeCharDevice, nil)
+
+	_, err := readAndValidateContent("")
+	if err == nil {
+		t.Fatal("expected error when stdin is a terminal")
+	}
+	if !strings.Contains(err.Error(), "content required via --file or pipe") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestReadAndValidateContent_StdinStatError(t *testing.T) {
+	withStdin(t, strings.NewReader(""), 0, errors.New("stat boom"))
+
+	_, err := readAndValidateContent("")
+	if err == nil {
+		t.Fatal("expected error when stdin stat fails")
+	}
+	if !strings.Contains(err.Error(), "checking stdin") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// constByteReader yields the same byte forever; pair with io.LimitReader to
+// simulate a large stdin without allocating the full payload up front.
+type constByteReader byte
+
+func (b constByteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = byte(b)
+	}
+	return len(p), nil
+}
+
+func TestReadAndValidateContent_StdinTooLarge(t *testing.T) {
+	// Stream just past maxContentSize so the limit-reader path triggers
+	// without allocating the full 10 MB payload.
+	withStdin(t, io.LimitReader(constByteReader('a'), int64(maxContentSize+10)), 0, nil)
+
+	_, err := readAndValidateContent("")
+	if err == nil {
+		t.Fatal("expected error for oversized stdin input")
+	}
+	if !strings.Contains(err.Error(), "stdin too large") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

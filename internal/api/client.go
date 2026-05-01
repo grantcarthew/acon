@@ -94,23 +94,6 @@ func NewClient(baseURL, email, apiToken string) (*Client, error) {
 	}, nil
 }
 
-// logVerbose writes to VerboseLog if it's set
-func (c *Client) logVerbose(format string, args ...interface{}) {
-	if c.VerboseLog != nil {
-		fmt.Fprintf(c.VerboseLog, format, args...)
-	}
-}
-
-// truncateStringUTF8Safe safely truncates a string to maxRunes runes,
-// ensuring we don't split multi-byte UTF-8 characters.
-func truncateStringUTF8Safe(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes]) + "..."
-}
-
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	// Only track timing if verbose logging is enabled
 	var start time.Time

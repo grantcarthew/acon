@@ -298,7 +298,7 @@ func (r *ConfluenceRenderer) renderCodeSpan(
 		_, _ = w.WriteString("<code>") //nolint:errcheck
 		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
 			segment := c.(*ast.Text).Segment
-			_, _ = w.Write(segment.Value(source)) //nolint:errcheck
+			_, _ = w.Write(util.EscapeHTML(segment.Value(source))) //nolint:errcheck
 		}
 		_, _ = w.WriteString("</code>") //nolint:errcheck
 		return ast.WalkSkipChildren, nil

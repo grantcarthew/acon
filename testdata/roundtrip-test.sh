@@ -247,6 +247,13 @@ log_info "Checking special characters..."
 check_feature "Ampersand" "Ampersands &"
 check_feature "Angle brackets" "< >"
 
+# HTML-significant chars in inline code (regression check for issue #6)
+log_info "Checking HTML-significant chars in inline code..."
+check_feature "Inline code with angle brackets in paragraph" '`<name>`'
+check_feature "Inline code with ampersand" '`&cobra.Command'
+check_feature "Inline code with angle brackets in list item" '- Replace `<placeholder>`'
+check_feature "Inline code with angle brackets in table cell" '`<div>`'
+
 # Snake case identifiers (underscores should not be escaped)
 log_info "Checking snake_case identifiers..."
 check_feature "Snake case in list" "my_variable_name"

@@ -376,6 +376,29 @@ Mathematical: 2 × 3 = 6, π ≈ 3.14159, ∞ infinity
 
 Arrows: → ← ↑ ↓ ↔ ⇒ ⇐
 
+### HTML-Significant Characters in Inline Code
+
+These exercise HTML-entity escaping inside `<code>` so the storage format
+is accepted by Confluence's Fabric editor in all contexts.
+
+Inline code in a paragraph: `<name>`, `&value`, `a < b && c > d`, `<T extends string>`.
+
+Inline code inside a list item (Fabric editor previously rejected this):
+
+- Replace `<placeholder>` with the real value
+- Use `&cobra.Command{}` to construct
+- Generic constraint `<T comparable>` is supported
+- HTML entity literal `&amp;` shown as text
+
+Inline code inside a table cell:
+
+| Symbol  | Inline  | Note              |
+|---------|---------|-------------------|
+| less    | `<`     | Less-than sign    |
+| greater | `>`     | Greater-than sign |
+| amp     | `&`     | Ampersand         |
+| tag     | `<div>` | Sample tag        |
+
 ## Snake Case Identifiers
 
 Intra-word underscores should not be escaped in the output.

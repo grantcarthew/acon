@@ -1,7 +1,0 @@
-# Ignore subdirectories (cloned repos, external docs)
-*/
-
-# Include tracked subdirectories
-!docs/
-!indexes/
-!scripts/

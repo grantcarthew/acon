@@ -21,23 +21,23 @@ Technology Stack:
 go mod download
 
 # Build the binary
-go build -o acon
+go build -o acon ./cmd/acon
 
 # Run directly without building
-go run main.go [command]
+go run ./cmd/acon [command]
 
 # Install globally
-go install
+go install ./cmd/acon
 ```
 
 ## Build and Test Commands
 
 ```bash
 # Build
-go build -o acon
+go build -o acon ./cmd/acon
 
 # Build with version info
-go build -ldflags "-X main.version=v1.0.0" -o acon
+go build -ldflags "-X github.com/grantcarthew/acon/internal/cli.Version=v1.0.0" -o acon ./cmd/acon
 
 # Format code (required before commits)
 gofmt -w .
@@ -88,35 +88,43 @@ go test -v ./internal/api
 
 ```
 acon/
-├── cmd/                    # Cobra commands (UI layer)
-│   ├── root.go             # Root command and version handling
-│   ├── page.go             # Page subcommands
-│   ├── space.go            # Space subcommands
-│   └── debug.go            # Debug command for troubleshooting
+├── cmd/
+│   └── acon/
+│       └── main.go             # Entry point
 ├── internal/
-│   ├── api/                # Confluence REST API client
-│   │   └── client.go
-│   ├── config/             # Environment variable configuration
+│   ├── api/                    # Confluence REST API client
+│   │   ├── client.go
+│   │   ├── search.go
+│   │   └── util.go
+│   ├── cli/                    # Cobra commands (UI layer)
+│   │   ├── root.go             # Root command and version handling
+│   │   ├── page.go             # Page subcommands
+│   │   ├── space.go            # Space subcommands
+│   │   ├── search.go           # Search subcommand
+│   │   ├── debug.go            # Debug command for troubleshooting
+│   │   ├── help.go             # Help command
+│   │   ├── completion.go       # Shell completion
+│   │   └── agent-help/         # Embedded agent help content
+│   ├── config/                 # Environment variable configuration
 │   │   └── config.go
-│   └── converter/          # Bidirectional Markdown conversion
-│       ├── markdown.go     # Markdown → Confluence storage
-│       └── storage.go      # Confluence storage → Markdown
-├── .ai/                    # AI agent working files (DDD)
-│   ├── projects/           # Project documents
-│   ├── design/             # Design records
-│   └── tasks/              # Task documentation
-├── docs/                   # Human-facing documentation
-├── testdata/               # Test fixtures
+│   └── converter/              # Bidirectional Markdown conversion
+│       ├── markdown.go         # Markdown → Confluence storage
+│       ├── storage.go          # Confluence storage → Markdown
+│       └── confluence_renderer.go
+├── docs/                       # Human-facing documentation
+├── testdata/                   # Test fixtures
 │   ├── comprehensive-test.md
 │   ├── roundtrip-test.sh
-│   └── README.md           # Feature support matrix
-└── main.go                 # Entry point (version injection)
+│   └── README.md               # Feature support matrix
+├── project.md                  # Active project document
+├── AGENTS.md
+└── README.md
 ```
 
 ### Architecture Principles
 
-- Separation of concerns: `cmd/` handles CLI, `internal/api/` handles API, `internal/converter/` handles conversion
-- No circular dependencies: `cmd/` → `internal/*`, never the reverse
+- Separation of concerns: `internal/cli/` handles CLI, `internal/api/` handles API, `internal/converter/` handles conversion
+- No circular dependencies: `cmd/acon` → `internal/*`, never the reverse
 - Stateless API client: `Client` struct holds credentials, methods are pure operations
 
 ## Development Workflow
@@ -242,14 +250,14 @@ func TestConvertMarkdown(t *testing.T) {
 ### Adding a New API Method
 
 ```go
-func (c *Client) MethodName(params) (*Result, error) {
+func (c *Client) MethodName(ctx context.Context, params) (*Result, error) {
     // Validate inputs
     if strings.TrimSpace(param) == "" {
         return nil, fmt.Errorf("param cannot be empty")
     }
 
     // Make request
-    respBody, err := c.doRequest("METHOD", "/path", requestBody)
+    respBody, err := c.doRequest(ctx, "METHOD", "/path", requestBody)
     if err != nil {
         return nil, fmt.Errorf("operation failed: %w", err)
     }
@@ -266,10 +274,9 @@ func (c *Client) MethodName(params) (*Result, error) {
 
 ### Adding a New Command
 
-1. Create command in appropriate file (`cmd/page.go` or `cmd/space.go`)
+1. Create command in appropriate file (`internal/cli/page.go` or `internal/cli/space.go`)
 2. Follow existing patterns:
-   - Load config with `config.Load()`
-   - Create API client with `api.NewClient()`
+   - Bootstrap with `initClient()` from `internal/cli/root.go` (wraps `config.LoadWithVerbose` and `api.NewClient`, and is overridable via the `newClient` seam for tests)
    - Handle `-j/--json` flag for JSON output
    - Provide human-readable output by default
 3. Add to parent command in `init()` function
@@ -312,17 +319,8 @@ Set one of: `CONFLUENCE_API_TOKEN`, `ATLASSIAN_API_TOKEN`, or `JIRA_API_TOKEN`
 go clean -modcache
 go mod download
 go mod verify
-go build -o acon
+go build -o acon ./cmd/acon
 ```
-
-## Release Process
-
-See `.ai/tasks/release-process.md` for the complete release workflow including:
-
-1. Pre-release validation
-2. Version tagging
-3. GitHub Release creation
-4. Homebrew tap update
 
 ## Reference Documentation
 
@@ -332,5 +330,4 @@ See `.ai/tasks/release-process.md` for the complete release workflow including:
 - [Cobra CLI Framework](https://github.com/spf13/cobra)
 - [Goldmark Markdown Parser](https://github.com/yuin/goldmark)
 - [html-to-Markdown](https://github.com/JohannesKaufmann/html-to-markdown)
-- Code review checklist: `.ai/tasks/code-review.md`
 - Feature support matrix: `testdata/README.md`

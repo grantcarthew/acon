@@ -51,7 +51,7 @@ _Check out [my other Homebrew packages](https://github.com/grantcarthew/homebrew
 **Go install**:
 
 ```bash
-go install github.com/grantcarthew/acon@latest
+go install github.com/grantcarthew/acon/cmd/acon@latest
 ```
 
 **From source**:
@@ -59,7 +59,7 @@ go install github.com/grantcarthew/acon@latest
 ```bash
 git clone https://github.com/grantcarthew/acon.git
 cd acon
-go build -o acon
+go build -o acon ./cmd/acon
 sudo mv acon /usr/local/bin/
 ```
 
@@ -587,7 +587,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - run: go install github.com/grantcarthew/acon@latest
+      - run: go install github.com/grantcarthew/acon/cmd/acon@latest
       - name: Update Confluence
         env:
           CONFLUENCE_BASE_URL: ${{ secrets.CONFLUENCE_BASE_URL }}
@@ -642,36 +642,42 @@ echo "Backup complete: $BACKUP_DIR"
 git clone https://github.com/grantcarthew/acon.git
 cd acon
 go mod download
-go build -o acon
+go build -o acon ./cmd/acon
 ```
 
 ### Project Structure
 
 ```
 acon/
-├── cmd/                    # Cobra CLI commands
-│   ├── root.go            # Root command and version
-│   ├── page.go            # Page subcommands
-│   ├── space.go           # Space subcommands
-│   └── debug.go           # Debug subcommands
+├── cmd/
+│   └── acon/
+│       └── main.go             # Entry point
 ├── internal/
-│   ├── api/               # Confluence REST API client
-│   │   └── client.go
-│   ├── config/            # Environment variable loader
+│   ├── api/                   # Confluence REST API client
+│   │   ├── client.go
+│   │   ├── search.go
+│   │   └── util.go
+│   ├── cli/                   # Cobra CLI commands
+│   │   ├── root.go            # Root command and version
+│   │   ├── page.go            # Page subcommands
+│   │   ├── space.go           # Space subcommands
+│   │   ├── search.go          # Search subcommand
+│   │   ├── debug.go           # Debug subcommands
+│   │   ├── help.go            # Help command
+│   │   ├── completion.go      # Shell completion
+│   │   └── agent-help/        # Embedded agent help content
+│   ├── config/                # Environment variable loader
 │   │   └── config.go
-│   └── converter/         # Bidirectional Markdown conversion
-│       ├── markdown.go    # Markdown → Confluence storage
-│       └── storage.go     # Confluence storage → Markdown
-├── docs/                  # Documentation and processes
-│   └── tasks/
-│       ├── code-review.md
-│       └── release-process.md
-├── testdata/              # Test fixtures and feature documentation
+│   └── converter/             # Bidirectional Markdown conversion
+│       ├── markdown.go        # Markdown → Confluence storage
+│       ├── storage.go         # Confluence storage → Markdown
+│       └── confluence_renderer.go
+├── docs/                      # Human-facing documentation
+├── testdata/                  # Test fixtures and feature documentation
 │   ├── comprehensive-test.md  # Full Markdown feature test
 │   ├── roundtrip-test.sh      # Automated round-trip testing
-│   └── README.md          # Feature support matrix and known gaps
-├── main.go                # Entry point
-├── AGENTS.md              # Agent development guidelines
+│   └── README.md              # Feature support matrix and known gaps
+├── AGENTS.md                  # Agent development guidelines
 └── README.md
 ```
 
@@ -743,7 +749,7 @@ acon space view YOUR_SPACE_KEY
 go clean -modcache
 go mod download
 go mod verify
-go build -o acon
+go build -o acon ./cmd/acon
 ```
 
 ## FAQ

@@ -20,7 +20,7 @@ Out of scope:
 
 ## Current State
 
-File: `internal/converter/confluence_renderer.go`. The renderer registers handlers for several node kinds that goldmark's `extension.GFM` also handles. GFM's renderers run at default priority; `ConfluenceRenderer` is registered at priority 1000. In goldmark, lower priority numbers run earlier and the last write wins, so GFM's output is what reaches Confluence whenever both register for the same kind.
+File: `internal/converter/confluence_renderer.go`. The renderer registers handlers for several node kinds that goldmark's `extension.GFM` also handles. GFM's HTML renderers register at priority 500 (`extension/table.go:553`, `extension/tasklist.go:118`, `extension/strikethrough.go:116`); `ConfluenceRenderer` is registered at priority 1000. During initialisation, goldmark sorts NodeRenderers ascending by priority (`util/util.go:877`) then iterates the slice in reverse, calling `RegisterFuncs` on each in turn (`renderer/renderer.go:140`). Each `Register` call writes the function into a map keyed by node kind (`renderer/renderer.go:127`), so later registrations overwrite earlier ones. The renderer with the lowest priority value therefore wins per shared kind, because it registers last. `ConfluenceRenderer` (1000) registers first; GFM (500) registers second and overwrites the six shared kinds, so GFM's output is what reaches Confluence at render time.
 
 Candidate dead methods (registered for kinds also covered by GFM):
 
@@ -108,7 +108,7 @@ Confluence storage format accepts both forms, so the divergence has not caused a
 
 2. `renderStrikethrough` included by symmetry with table renderers (design) — Resolved: in scope for deletion.
 
-   Earlier framing of the problem treated `renderStrikethrough` as a special case because GFM's strikethrough output happens to match the project renderer's output. By the priority-1000 rule that justifies deleting the table methods, `renderStrikethrough` is equally unreachable and should be deleted alongside them. The requirements above already include it; confirming this in writing prevents a future implementer from second-guessing the inclusion.
+   Earlier framing of the problem treated `renderStrikethrough` as a special case because GFM's strikethrough output happens to match the project renderer's output. By the same overwrite mechanism that justifies deleting the table methods, `renderStrikethrough` is equally unreachable and should be deleted alongside them. The requirements above already include it; confirming this in writing prevents a future implementer from second-guessing the inclusion.
    Resolution: delete `renderStrikethrough` and its registration. Verified that the only references in the codebase are the definition and the single registration; the function reports 0% coverage today; the existing strikethrough test in `markdown_test.go` passes against GFM's output, not this method's. Deletion has no functional or test impact.
 
 ## Acceptance Criteria

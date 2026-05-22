@@ -16,6 +16,14 @@ func NewConfluenceRenderer() renderer.NodeRenderer {
 }
 
 // RegisterFuncs registers node rendering functions.
+//
+// GFM-provided node kinds (tables, task checkboxes, strikethrough) are
+// intentionally not registered here. goldmark's GFM extension registers
+// them at priority 500; this renderer is wired in at priority 1000 (see
+// markdown.go). goldmark sorts renderers ascending by priority and
+// iterates in reverse, so later Register calls overwrite earlier ones in
+// the kind→func map — the numerically lower priority value wins. GFM
+// therefore owns those kinds in the live MarkdownToStorage pipeline.
 func (r *ConfluenceRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	// Block elements
 	reg.Register(ast.KindDocument, r.renderDocument)
@@ -39,18 +47,6 @@ func (r *ConfluenceRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegister
 	reg.Register(ast.KindRawHTML, r.renderRawHTML)
 	reg.Register(ast.KindText, r.renderText)
 	reg.Register(ast.KindString, r.renderString)
-
-	// Table extension (GFM)
-	reg.Register(extast.KindTable, r.renderTable)
-	reg.Register(extast.KindTableHeader, r.renderTableHeader)
-	reg.Register(extast.KindTableRow, r.renderTableRow)
-	reg.Register(extast.KindTableCell, r.renderTableCell)
-
-	// Task list extension (GFM)
-	reg.Register(extast.KindTaskCheckBox, r.renderTaskCheckBox)
-
-	// Strikethrough extension (GFM)
-	reg.Register(extast.KindStrikethrough, r.renderStrikethrough)
 }
 
 // Helper to write lines from a node
@@ -389,90 +385,6 @@ func (r *ConfluenceRenderer) renderString(
 	if entering {
 		n := node.(*ast.String)
 		_, _ = w.Write(util.EscapeHTML(n.Value)) //nolint:errcheck
-	}
-	return ast.WalkContinue, nil
-}
-
-// Table
-func (r *ConfluenceRenderer) renderTable(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	if entering {
-		_, _ = w.WriteString("<table><tbody>\n") //nolint:errcheck
-	} else {
-		_, _ = w.WriteString("</tbody></table>\n") //nolint:errcheck
-	}
-	return ast.WalkContinue, nil
-}
-
-// TableHeader
-func (r *ConfluenceRenderer) renderTableHeader(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	// TableHeader is just a container, don't output tags
-	return ast.WalkContinue, nil
-}
-
-// TableRow
-func (r *ConfluenceRenderer) renderTableRow(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	if entering {
-		_, _ = w.WriteString("<tr>") //nolint:errcheck
-	} else {
-		_, _ = w.WriteString("</tr>\n") //nolint:errcheck
-	}
-	return ast.WalkContinue, nil
-}
-
-// TableCell
-func (r *ConfluenceRenderer) renderTableCell(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	n := node.(*extast.TableCell)
-	tag := "td"
-	if n.Parent().Kind() == extast.KindTableHeader {
-		tag = "th"
-	}
-
-	if entering {
-		_ = w.WriteByte('<')      //nolint:errcheck
-		_, _ = w.WriteString(tag) //nolint:errcheck
-
-		// Handle alignment
-		if n.Alignment != extast.AlignNone {
-			_, _ = w.WriteString(` align="`) //nolint:errcheck
-			switch n.Alignment {
-			case extast.AlignLeft:
-				_, _ = w.WriteString("left") //nolint:errcheck
-			case extast.AlignCenter:
-				_, _ = w.WriteString("center") //nolint:errcheck
-			case extast.AlignRight:
-				_, _ = w.WriteString("right") //nolint:errcheck
-			}
-			_ = w.WriteByte('"') //nolint:errcheck
-		}
-
-		_ = w.WriteByte('>') //nolint:errcheck
-	} else {
-		_, _ = w.WriteString("</") //nolint:errcheck
-		_, _ = w.WriteString(tag)  //nolint:errcheck
-		_ = w.WriteByte('>')       //nolint:errcheck
-	}
-	return ast.WalkContinue, nil
-}
-
-// TaskCheckBox - rendered as part of task list item, skip here
-func (r *ConfluenceRenderer) renderTaskCheckBox(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	// TaskCheckBox is handled by the list/listItem rendering for Confluence task format
-	// Skip rendering here to avoid duplicate output
-	return ast.WalkContinue, nil
-}
-
-// Strikethrough
-func (r *ConfluenceRenderer) renderStrikethrough(
-	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
-	if entering {
-		_, _ = w.WriteString("<del>") //nolint:errcheck
-	} else {
-		_, _ = w.WriteString("</del>") //nolint:errcheck
 	}
 	return ast.WalkContinue, nil
 }

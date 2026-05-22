@@ -4,7 +4,7 @@
 
 acon (Atlassian Confluence) is a CLI tool for managing Confluence pages and spaces from the terminal. It provides bidirectional Markdown conversion (Markdown ↔ Confluence storage format), enabling a local-first documentation workflow.
 
-- Active Project: project.md
+- Active Project: None
 
 Technology Stack:
 

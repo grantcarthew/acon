@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0](https://github.com/grantcarthew/acon/compare/v2.0.0...v2.1.0) - 2026-06-23
+
+### Added
+
+- `GetSpaceByID` API client method
+- Restructured CLI with additional commands
+
+### Fixed
+
+- Escape HTML entities (`<`, `>`, `&`) within inline code spans so they are no longer misinterpreted by the Confluence editor
+
 ## [2.0.0](https://github.com/grantcarthew/acon/compare/v1.5.0...v2.0.0) - 2026-02-05
 
 ### Changed

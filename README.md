@@ -38,6 +38,7 @@ acon page update 123456 -f docs.md
 ```bash
 # Add the tap first
 brew tap grantcarthew/tap
+brew trust grantcarthew/tap
 
 # Then install
 brew install acon
